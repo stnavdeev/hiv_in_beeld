@@ -47,7 +47,7 @@ if (getRversion() >= "2.15.1") {
   ))
 }
 
-data_path <- "output.xlsx"
+data_path <- "data/output.xlsx"
 log_file <- "hiv_dashboard_log.txt"
 unlink(log_file)
 
