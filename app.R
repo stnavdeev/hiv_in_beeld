@@ -583,6 +583,7 @@ server <- function(input, output, session) {
     ) +
       geom_line(linewidth = 1, linetype = "solid") +
       geom_point(size = 2) +
+      geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
       scale_color_manual(values = palette_vals, drop = FALSE) +
       theme_minimal(base_size = 13) +
       labs(
