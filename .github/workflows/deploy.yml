@@ -27,6 +27,6 @@ jobs:
         password: ${{ secrets.FTP_PASSWORD }}
         port: 22
         local_path: './deploy/*'
-        remote_path: '/apps/RVS_tool/'
+        remote_path: '/apps/hiv_in_beeld/'
         sftp_only: true
         delete_remote_files: false
