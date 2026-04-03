@@ -1,6 +1,9 @@
-[2026-04-03 15:31:19.991197] [startup] Found 106 sheets 
-[2026-04-03 15:31:22.964084] [cache] Loaded profile (101 rows) 
-[2026-04-03 15:31:22.985347] [cache] Loaded shm_total (8 rows) 
-[2026-04-03 15:31:23.259863] [cache] Loaded has_j05a_es (14 rows) 
-[2026-04-03 15:31:23.288835] [cache] Loaded has_j05a_es_group (154 rows) 
-[2026-04-03 15:31:23.321127] [cache] Loaded has_j05a_mean (60 rows) 
+[2026-04-03 16:09:47.128475] [startup] Found 106 sheets 
+[2026-04-03 16:09:49.858515] [cache] Loaded profile (101 rows) 
+[2026-04-03 16:09:49.878379] [cache] Loaded shm_total (8 rows) 
+[2026-04-03 16:09:50.132385] [cache] Loaded has_j05a_es (14 rows) 
+[2026-04-03 16:09:50.154729] [cache] Loaded has_j05a_es_group (154 rows) 
+[2026-04-03 16:09:50.190471] [cache] Loaded has_j05a_mean (60 rows) 
+[2026-04-03 16:10:02.523961] [cache] Loaded has_j05a_mean_leef (180 rows) 
+[2026-04-03 16:10:07.704025] [cache] Loaded has_j05a_mean_hiv_ (180 rows) 
+[2026-04-03 16:10:09.651617] [cache] Loaded has_j05a_mean_migr (180 rows) 

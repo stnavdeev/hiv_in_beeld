@@ -134,7 +134,8 @@ sheet_preview <- purrr::map_dfr(sheet_names, function(s) {
 means_index <- sheet_preview |>
   dplyr::filter(has_value, !sheet %in% c("codes", "matching_stats")) |>
   dplyr::filter(
-    !stringr::str_detect(sheet, "_mean_yr$") | stringr::str_detect(sheet, "_mean_yr_all$")
+    !stringr::str_detect(sheet, "_mean_yr$") |
+      stringr::str_detect(sheet, "_mean_yr.*_all$")
   ) |>
   dplyr::mutate(
     dataset_label = prettify_label(dataset),
@@ -143,6 +144,10 @@ means_index <- sheet_preview |>
       TRUE ~ "Years since diagnosis"
     ),
     group_var = dplyr::case_when(
+      stringr::str_detect(sheet, "_mean_yr_gesl_all$|_mean_gesl(_all)?$") ~ "geslacht",
+      stringr::str_detect(sheet, "_mean_yr_migr_all$|_mean_migr(_all)?$") ~ "migratie_achtergrond",
+      stringr::str_detect(sheet, "_mean_yr_hiv.*_all$|_mean_hiv.*(_all)?$") ~ "hiv_stage",
+      stringr::str_detect(sheet, "_mean_yr_leef_all$|_mean_leef(_all)?$") ~ "leeftijd_cat",
       stringr::str_detect(cols, "geslacht") ~ "geslacht",
       stringr::str_detect(cols, "migratie_achtergrond") ~ "migratie_achtergrond",
       stringr::str_detect(cols, "hiv_stage") ~ "hiv_stage",
@@ -433,19 +438,12 @@ server <- function(input, output, session) {
   
   mean_sheet_choice <- reactive({
     req(input$mean_dataset, input$mean_time_scale)
+    
     candidates <- means_index |>
       dplyr::filter(
         dataset_label == input$mean_dataset,
         time_scale == input$mean_time_scale
       )
-    
-    if (identical(input$mean_time_scale, "Calendar year")) {
-      preferred <- candidates |>
-        dplyr::filter(stringr::str_detect(sheet, "_mean_yr_all$"))
-      if (nrow(preferred) > 0) {
-        candidates <- preferred
-      }
-    }
     
     req(nrow(candidates) > 0)
     candidates
@@ -454,22 +452,47 @@ server <- function(input, output, session) {
   observe({
     candidates <- mean_sheet_choice()
     choices <- unique(candidates$group_label)
+    
+    choices <- c(
+      "No subgroup split",
+      sort(setdiff(choices, "No subgroup split"))
+    )
+    choices <- unique(choices[choices %in% candidates$group_label])
+    
     selected <- isolate(input$mean_group_var)
     if (is.null(selected) || !(selected %in% choices)) selected <- choices[1]
+    
     updateSelectInput(session, "mean_group_var", choices = choices, selected = selected)
   })
   
   mean_sheet_selected <- reactive({
     candidates <- mean_sheet_choice()
     req(input$mean_group_var)
-    row <- candidates |>
-      dplyr::filter(group_label == input$mean_group_var) |>
-      dplyr::slice(1)
     
-    if (nrow(row) == 0) {
-      row <- candidates |>
-        dplyr::slice(1)
+    rows <- candidates |>
+      dplyr::filter(group_label == input$mean_group_var)
+    
+    if (nrow(rows) == 0) {
+      rows <- candidates
     }
+    
+    if (identical(input$mean_time_scale, "Calendar year")) {
+      if (identical(input$mean_group_var, "No subgroup split")) {
+        preferred <- rows |>
+          dplyr::filter(stringr::str_detect(sheet, "_mean_yr_all$"))
+      } else {
+        preferred <- rows |>
+          dplyr::filter(stringr::str_detect(sheet, "_mean_yr_.*_all$"))
+      }
+      
+      if (nrow(preferred) > 0) {
+        rows <- preferred
+      }
+    }
+    
+    row <- rows |>
+      dplyr::arrange(sheet) |>
+      dplyr::slice(1)
     
     req(nrow(row) == 1)
     row
@@ -597,6 +620,10 @@ server <- function(input, output, session) {
       p <- p + facet_wrap(facet_formula, scales = "fixed", ncol = 1)
     }
     
+    if (x_var == "years_since_diagnosis") {
+      p <- p + geom_vline(xintercept = 0, linetype = "dashed", color = "red")
+    }
+    
     plotly::ggplotly(p, tooltip = "text")
   })
   
@@ -695,7 +722,7 @@ server <- function(input, output, session) {
       geom_line(linewidth = 1, linetype = "dashed", color = "steelblue4") +
       geom_point(size = 2, color = "steelblue4") +
       geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
-      geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
+      geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
       scale_x_continuous(breaks = sort(unique(df$years_since_diagnosis))) +
       theme_minimal(base_size = 13) +
       labs(
@@ -740,8 +767,17 @@ server <- function(input, output, session) {
   observe({
     df <- esg_data_raw()
     req(nrow(df) > 0)
+    
     facs <- sort(unique(df$factor))
-    updateSelectInput(session, "esg_factor", choices = facs, selected = facs[1])
+    selected <- isolate(input$esg_factor)
+    if (is.null(selected) || !(selected %in% facs)) selected <- facs[1]
+    
+    updateSelectInput(
+      session,
+      "esg_factor",
+      choices = stats::setNames(facs, prettify_factor(facs)),
+      selected = selected
+    )
   })
   
   observe({
@@ -856,7 +892,7 @@ server <- function(input, output, session) {
       geom_line(linewidth = 1, linetype = "dashed") +
       geom_point(size = 2) +
       geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
-      geom_vline(xintercept = 0, linetype = "dashed", color = "gray40") +
+      geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
       scale_x_continuous(breaks = sort(unique(df$years_since_diagnosis))) +
       theme_minimal(base_size = 13) +
       labs(
