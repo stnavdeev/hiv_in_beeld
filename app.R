@@ -208,8 +208,12 @@ get_sheet <- function(sheet_name) {
 }
 
 ui <- navbarPage(
-  title = "HIV care dashboard",
+  title = "Understanding HIV care in the Netherlands",
   id = "main_nav",
+  header = tags$div(
+    style = "padding: 12px 18px 4px 18px; color: #4b5563; font-size: 14px;",
+    "Explore healthcare costs, medication use, profiles, and event-study estimates for people with HIV and matched controls."
+  ),
   
   tabPanel(
     "Overview",
