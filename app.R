@@ -43,11 +43,16 @@ if (getRversion() >= "2.15.1") {
     "coef", "lo", "hi", "group", "factor", "category", "level", "share",
     "N", "series", "x_value", "has_hiv_label", "group_value",
     "dataset_label", "pretty_variable", "outcome_label", "factor_label",
-    "avg_effect_label", "display_name"
+    "avg_effect_label", "display_name", "value_nominal",
+    "value_adjusted_2023", "value_plot", "cpi"
   ))
 }
 
-data_path <- "data/output.xlsx"
+data_path <- dplyr::case_when(
+  file.exists("data/output.xlsx") ~ "data/output.xlsx",
+  file.exists("output.xlsx") ~ "output.xlsx",
+  TRUE ~ "data/output.xlsx"
+)
 log_file <- "hiv_dashboard_log.txt"
 unlink(log_file)
 
@@ -110,6 +115,25 @@ prettify_hiv <- function(x) {
     `1` = "People with HIV",
     .default = as.character(x)
   )
+}
+
+cpi_index <- tibble::tibble(
+  year = 2014:2024,
+  cpi = c(99.40, 100.00, 100.32, 101.70, 103.44, 106.16,
+          107.51, 110.39, 121.43, 126.09, 130.31)
+)
+base_2023 <- cpi_index$cpi[cpi_index$year == 2023]
+cpi_index <- cpi_index |>
+  dplyr::mutate(cpi = cpi / base_2023)
+
+is_cost_variable <- function(x) {
+  x_chr <- as.character(x)
+  !is.na(x_chr) &
+    (
+      stringr::str_detect(x_chr, "^zvwk") |
+        stringr::str_detect(x_chr, "^costs_")
+    ) &
+    !stringr::str_detect(x_chr, "^used_")
 }
 
 sheet_names <- readxl::excel_sheets(data_path)
@@ -225,6 +249,7 @@ ui <- navbarPage(
         selectInput("mean_group_var", "Subgroup split", choices = NULL),
         selectInput("mean_variable", "Outcome variable", choices = NULL),
         selectInput("mean_type", "Statistic type", choices = NULL),
+        uiOutput("mean_inflation_ui"),
         uiOutput("mean_group_filter_ui"),
         downloadButton("dl_mean", "Download filtered mean data")
       ),
@@ -523,6 +548,20 @@ server <- function(input, output, session) {
       selected = selected_type
     )
   })
+
+  output$mean_inflation_ui <- renderUI({
+    req(input$mean_time_scale, input$mean_variable)
+
+    if (!identical(input$mean_time_scale, "Calendar year") || !isTRUE(is_cost_variable(input$mean_variable))) {
+      return(NULL)
+    }
+
+    checkboxInput(
+      "mean_adjust_inflation",
+      "Adjust costs to 2023 EUR using CPI",
+      value = FALSE
+    )
+  })
   
   output$mean_group_filter_ui <- renderUI({
     df <- mean_data_raw()
@@ -570,11 +609,52 @@ server <- function(input, output, session) {
         dplyr::mutate(group_value = "All")
     }
     
-    df |>
+    df <- df |>
       dplyr::mutate(
         x_value = suppressWarnings(as.numeric(.data[[x_var]]))
       ) |>
       dplyr::filter(!is.na(x_value), !is.na(value))
+
+    if (identical(x_var, "year")) {
+      df <- df |>
+        dplyr::left_join(cpi_index, by = "year")
+    } else {
+      df <- df |>
+        dplyr::mutate(cpi = NA_real_)
+    }
+
+    adjust_for_inflation <- identical(input$mean_time_scale, "Calendar year") &&
+      isTRUE(is_cost_variable(input$mean_variable)) &&
+      isTRUE(input$mean_adjust_inflation)
+
+    df <- df |>
+      dplyr::mutate(
+        value_nominal = value,
+        value_adjusted_2023 = dplyr::if_else(
+          !is.na(cpi) & cpi > 0,
+          value / cpi,
+          value
+        )
+      )
+
+    if (adjust_for_inflation) {
+      df <- df |>
+        dplyr::mutate(
+          value_plot = value_adjusted_2023,
+          value_tooltip = paste0(
+            "Value (2023 EUR): ", scales::comma(value_plot),
+            "<br>Nominal value: ", scales::comma(value_nominal)
+          )
+        )
+    } else {
+      df <- df |>
+        dplyr::mutate(
+          value_plot = value_nominal,
+          value_tooltip = paste0("Value: ", scales::comma(value_plot))
+        )
+    }
+
+    df
   })
   
   output$plot_mean <- renderPlotly({
@@ -584,6 +664,9 @@ server <- function(input, output, session) {
     x_var <- if ("years_since_diagnosis" %in% names(df)) "years_since_diagnosis" else "year"
     group_var <- mean_sheet_selected()$group_var[[1]]
     facet_formula <- if (group_var != "none") ~ group_value else NULL
+    adjust_for_inflation <- identical(input$mean_time_scale, "Calendar year") &&
+      isTRUE(is_cost_variable(input$mean_variable)) &&
+      isTRUE(input$mean_adjust_inflation)
     palette_vals <- c(
       "Matched controls / no HIV" = "gray50",
       "People with HIV" = "steelblue4"
@@ -593,14 +676,14 @@ server <- function(input, output, session) {
       df,
       aes(
         x = x_value,
-        y = value,
+        y = value_plot,
         color = has_hiv_label,
         group = has_hiv_label,
         text = paste0(
           "Outcome: ", pretty_variable, "<br>",
           "Series: ", has_hiv_label, "<br>",
           ifelse(x_var == "year", "Year: ", "Years since diagnosis: "), x_value, "<br>",
-          "Value: ", scales::comma(value)
+          value_tooltip
         )
       )
     ) +
@@ -609,10 +692,14 @@ server <- function(input, output, session) {
       scale_color_manual(values = palette_vals, drop = FALSE) +
       theme_minimal(base_size = 13) +
       labs(
-        title = paste("Aggregated means:", unique(df$pretty_variable)),
+        title = paste(
+          "Aggregated means:",
+          unique(df$pretty_variable),
+          if (adjust_for_inflation) "(2023 EUR)" else ""
+        ),
         subtitle = paste(input$mean_dataset, "-", input$mean_group_var),
         x = ifelse(x_var == "year", "Calendar year", "Years since diagnosis"),
-        y = "Value",
+        y = if (adjust_for_inflation) "Value (2023 EUR)" else "Value",
         color = NULL
       )
     
