@@ -10,6 +10,7 @@ flush.console()
 packages <- c(
   "shiny",
   "readxl",
+  "writexl",
   "dplyr",
   "tidyr",
   "ggplot2",
@@ -235,7 +236,7 @@ ui <- navbarPage(
     sidebarLayout(
       sidebarPanel(
         selectInput("profile_category", "Category", choices = NULL),
-        downloadButton("dl_profile", "Download filtered profile data")
+        downloadButton("dl_profile", "Download filtered profile data (Excel)")
       ),
       mainPanel(
         plotlyOutput("plot_profile", height = "820px"),
@@ -255,7 +256,7 @@ ui <- navbarPage(
         selectInput("mean_type", "Statistic type", choices = NULL),
         uiOutput("mean_inflation_ui"),
         uiOutput("mean_group_filter_ui"),
-        downloadButton("dl_mean", "Download filtered mean data")
+        downloadButton("dl_mean", "Download filtered mean data (Excel)")
       ),
       mainPanel(
         plotlyOutput("plot_mean", height = "660px"),
@@ -270,7 +271,7 @@ ui <- navbarPage(
       sidebarPanel(
         selectInput("es_dataset", "Dataset", choices = NULL),
         selectInput("es_outcome", "Outcome", choices = NULL),
-        downloadButton("dl_es", "Download filtered event-study data")
+        downloadButton("dl_es", "Download filtered event-study data (Excel)")
       ),
       mainPanel(
         uiOutput("es_avg_effect"),
@@ -289,7 +290,7 @@ ui <- navbarPage(
         selectInput("esg_factor", "Grouping factor", choices = NULL),
         selectInput("esg_outcome", "Outcome", choices = NULL),
         selectizeInput("esg_groups", "Visible groups", choices = NULL, multiple = TRUE),
-        downloadButton("dl_esg", "Download filtered grouped event-study data")
+        downloadButton("dl_esg", "Download filtered grouped event-study data (Excel)")
       ),
       mainPanel(
         uiOutput("esg_avg_effect"),
@@ -1010,23 +1011,23 @@ server <- function(input, output, session) {
   })
   
   output$dl_profile <- downloadHandler(
-    filename = function() paste0("profile_", input$profile_category, "_", Sys.Date(), ".csv"),
-    content = function(file) write.csv(filtered_profile(), file, row.names = FALSE)
+    filename = function() paste0("profile_", input$profile_category, "_", Sys.Date(), ".xlsx"),
+    content = function(file) writexl::write_xlsx(filtered_profile(), path = file)
   )
   
   output$dl_mean <- downloadHandler(
-    filename = function() paste0("aggregated_means_", Sys.Date(), ".csv"),
-    content = function(file) write.csv(filtered_mean(), file, row.names = FALSE)
+    filename = function() paste0("aggregated_means_", Sys.Date(), ".xlsx"),
+    content = function(file) writexl::write_xlsx(filtered_mean(), path = file)
   )
   
   output$dl_es <- downloadHandler(
-    filename = function() paste0("event_study_", Sys.Date(), ".csv"),
-    content = function(file) write.csv(filtered_es(), file, row.names = FALSE)
+    filename = function() paste0("event_study_", Sys.Date(), ".xlsx"),
+    content = function(file) writexl::write_xlsx(filtered_es(), path = file)
   )
   
   output$dl_esg <- downloadHandler(
-    filename = function() paste0("event_study_by_group_", Sys.Date(), ".csv"),
-    content = function(file) write.csv(filtered_esg(), file, row.names = FALSE)
+    filename = function() paste0("event_study_by_group_", Sys.Date(), ".xlsx"),
+    content = function(file) writexl::write_xlsx(filtered_esg(), path = file)
   )
 }
 
