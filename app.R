@@ -1,31 +1,20 @@
-cat("\n========== HIV DASHBOARD APP STARTUP ==========\n")
+# Self-contained combined Shiny app.
+# Generated from app_iteration_2.R and app_iteration_3.R.
+# The Excel files in data/iteration_2 and data/iteration_3 are still required.
+
+cat("\n========== HIV COMBINED DASHBOARD STARTUP ==========\n")
 cat(paste0("Time: ", Sys.time(), "\n"))
 cat(paste0("Working directory: ", getwd(), "\n"))
-cat("===============================================\n\n")
-flush.console()
-
-cat("[STARTUP] Installing and loading required packages...\n")
+cat("===================================================\n\n")
 flush.console()
 
 packages <- c(
   "shiny",
-  "readxl",
-  "writexl",
-  "dplyr",
-  "tidyr",
-  "ggplot2",
-  "plotly",
-  "purrr",
-  "stringr",
-  "tibble",
-  "DT",
-  "scales"
+  "htmltools"
 )
 
 new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
 if (length(new_packages) > 0) {
-  cat(sprintf("[STARTUP] Installing missing packages: %s\n", paste(new_packages, collapse = ", ")))
-  flush.console()
   install.packages(
     new_packages,
     lib = Sys.getenv("R_LIBS_USER"),
@@ -34,1011 +23,1473 @@ if (length(new_packages) > 0) {
 }
 
 invisible(lapply(packages, library, character.only = TRUE))
-cat("[STARTUP] Packages ready.\n")
-flush.console()
 
-if (getRversion() >= "2.15.1") {
-  utils::globalVariables(c(
-    "sheet", "dataset", "population", "group_var", "outcome",
-    "years_since_diagnosis", "year", "has_hiv", "value", "type",
-    "coef", "lo", "hi", "group", "factor", "category", "level", "share",
-    "N", "series", "x_value", "has_hiv_label", "group_value",
-    "dataset_label", "pretty_variable", "outcome_label", "factor_label",
-    "avg_effect_label", "display_name", "value_nominal",
-    "value_adjusted_2023", "value_plot", "cpi"
+app_title <- "Understanding HIV care in the Netherlands"
+app_subtitle <- "Explore healthcare costs, medication use, profiles, and event-study estimates for people with HIV and matched controls."
+
+embedded_iteration_2_code <- c("cat(\"\\n========== HIV DASHBOARD APP STARTUP ==========\\n\")", 
+"cat(paste0(\"Time: \", Sys.time(), \"\\n\"))", "cat(paste0(\"Working directory: \", getwd(), \"\\n\"))", 
+"cat(\"===============================================\\n\\n\")", 
+"flush.console()", "", "cat(\"[STARTUP] Installing and loading required packages...\\n\")", 
+"flush.console()", "", "packages <- c(", "  \"shiny\",", "  \"readxl\",", 
+"  \"writexl\",", "  \"dplyr\",", "  \"tidyr\",", "  \"ggplot2\",", 
+"  \"plotly\",", "  \"purrr\",", "  \"stringr\",", "  \"tibble\",", 
+"  \"DT\",", "  \"scales\"", ")", "", "new_packages <- packages[!(packages %in% installed.packages()[, \"Package\"])]", 
+"if (length(new_packages) > 0) {", "  cat(sprintf(\"[STARTUP] Installing missing packages: %s\\n\", paste(new_packages, collapse = \", \")))", 
+"  flush.console()", "  install.packages(", "    new_packages,", 
+"    lib = Sys.getenv(\"R_LIBS_USER\"),", "    repos = \"https://cran.r-project.org\"", 
+"  )", "}", "", "invisible(lapply(packages, library, character.only = TRUE))", 
+"cat(\"[STARTUP] Packages ready.\\n\")", "flush.console()", "", 
+"if (getRversion() >= \"2.15.1\") {", "  utils::globalVariables(c(", 
+"    \"sheet\", \"dataset\", \"population\", \"group_var\", \"outcome\",", 
+"    \"years_since_diagnosis\", \"year\", \"has_hiv\", \"value\", \"type\",", 
+"    \"coef\", \"lo\", \"hi\", \"group\", \"factor\", \"category\", \"level\", \"share\",", 
+"    \"N\", \"series\", \"x_value\", \"has_hiv_label\", \"group_value\",", 
+"    \"dataset_label\", \"pretty_variable\", \"outcome_label\", \"factor_label\",", 
+"    \"avg_effect_label\", \"display_name\", \"value_nominal\",", 
+"    \"value_adjusted_2023\", \"value_plot\", \"cpi\"", "  ))", 
+"}", "", "data_path <- dplyr::case_when(", "  file.exists(\"data/iteration_2/output.xlsx\") ~ \"data/iteration_2/output.xlsx\",", 
+"  file.exists(\"data/output.xlsx\") ~ \"data/output.xlsx\",", 
+"  file.exists(\"output.xlsx\") ~ \"output.xlsx\",", "  TRUE ~ \"data/iteration_2/output.xlsx\"", 
+")", "log_file <- \"hiv_dashboard_log.txt\"", "unlink(log_file)", 
+"", "log_msg <- function(msg) {", "  line <- paste0(\"[\", Sys.time(), \"] \", msg)", 
+"  cat(line, \"\\n\", file = log_file, append = TRUE)", "  cat(line, \"\\n\")", 
+"  flush.console()", "}", "", "safe_read_sheet <- function(path, sheet) {", 
+"  tryCatch(", "    readxl::read_excel(path, sheet = sheet, guess_max = 100000),", 
+"    error = function(e) {", "      log_msg(sprintf(\"[safe_read_sheet] Failed to read %s: %s\", sheet, e$message))", 
+"      tibble::tibble()", "    }", "  )", "}", "", "infer_dataset <- function(sheet_name) {", 
+"  if (grepl(\"_es_group$\", sheet_name)) {", "    sub(\"_es_group$\", \"\", sheet_name)", 
+"  } else if (grepl(\"_es$\", sheet_name)) {", "    sub(\"_es$\", \"\", sheet_name)", 
+"  } else if (grepl(\"_mean\", sheet_name)) {", "    sub(\"_mean.*$\", \"\", sheet_name)", 
+"  } else {", "    NA_character_", "  }", "}", "", "prettify_label <- function(x) {", 
+"  x |>", "    stringr::str_replace_all(\"_\", \" \") |>", "    stringr::str_replace_all(\"\\\\s+\", \" \") |>", 
+"    stringr::str_trim() |>", "    stringr::str_to_title()", 
+"}", "", "prettify_factor <- function(x) {", "  dplyr::recode(", 
+"    x,", "    geslacht = \"Sex\",", "    migratie_achtergrond = \"Migration background\",", 
+"    hiv_stage = \"HIV stage\",", "    leeftijd_cat = \"Age category\",", 
+"    burgstaat = \"Marital status\",", "    typehh = \"Household type\",", 
+"    ggd = \"GGD\",", "    hgopl = \"Education\",", "    .default = prettify_label(x)", 
+"  )", "}", "", "prettify_hiv <- function(x) {", "  dplyr::recode(", 
+"    as.character(x),", "    `0` = \"Matched controls / no HIV\",", 
+"    `1` = \"People with HIV\",", "    .default = as.character(x)", 
+"  )", "}", "", "cpi_index <- tibble::tibble(", "  year = 2014:2024,", 
+"  cpi = c(99.40, 100.00, 100.32, 101.70, 103.44, 106.16,", "          107.51, 110.39, 121.43, 126.09, 130.31)", 
+")", "base_2023 <- cpi_index$cpi[cpi_index$year == 2023]", "cpi_index <- cpi_index |>", 
+"  dplyr::mutate(cpi = cpi / base_2023)", "", "is_cost_variable <- function(x) {", 
+"  x_chr <- as.character(x)", "  !is.na(x_chr) &", "    (", "      stringr::str_detect(x_chr, \"^zvwk\") |", 
+"        stringr::str_detect(x_chr, \"^costs_\")", "    ) &", 
+"    !stringr::str_detect(x_chr, \"^used_\")", "}", "", "sheet_names <- readxl::excel_sheets(data_path)", 
+"log_msg(sprintf(\"[startup] Found %d sheets\", length(sheet_names)))", 
+"", "sheet_preview <- purrr::map_dfr(sheet_names, function(s) {", 
+"  df <- safe_read_sheet(data_path, s)", "  cols_sorted <- sort(names(df))", 
+"  tibble::tibble(", "    sheet = s,", "    dataset = infer_dataset(s),", 
+"    n_rows = nrow(df),", "    cols = paste(names(df), collapse = \", \"),", 
+"    has_value = all(c(\"value\", \"variable\", \"type\") %in% names(df)),", 
+"    has_es = all(c(\"outcome\", \"coef\", \"lo\", \"hi\", \"years_since_diagnosis\") %in% names(df)),", 
+"    has_es_group = all(c(\"outcome\", \"factor\", \"group\", \"coef\", \"lo\", \"hi\", \"years_since_diagnosis\") %in% names(df)),", 
+"    has_profile = identical(cols_sorted, sort(c(\"has_hiv\", \"level\", \"N\", \"category\", \"share\"))),", 
+"    has_shm_total = identical(s, \"shm_total\") || (\"year\" %in% names(df) && sum(grepl(\"^N_|^n_\", names(df))) >= 1)", 
+"  )", "})", "", "means_index <- sheet_preview |>", "  dplyr::filter(has_value, !sheet %in% c(\"codes\", \"matching_stats\")) |>", 
+"  dplyr::filter(", "    !stringr::str_detect(sheet, \"_mean_yr$\") |", 
+"      stringr::str_detect(sheet, \"_mean_yr.*_all$\")", "  ) |>", 
+"  dplyr::mutate(", "    dataset_label = prettify_label(dataset),", 
+"    time_scale = dplyr::case_when(", "      stringr::str_detect(sheet, \"_mean_yr\") ~ \"Calendar year\",", 
+"      TRUE ~ \"Years since diagnosis\"", "    ),", "    group_var = dplyr::case_when(", 
+"      stringr::str_detect(sheet, \"_mean_yr_gesl_all$|_mean_gesl(_all)?$\") ~ \"geslacht\",", 
+"      stringr::str_detect(sheet, \"_mean_yr_migr_all$|_mean_migr(_all)?$\") ~ \"migratie_achtergrond\",", 
+"      stringr::str_detect(sheet, \"_mean_yr_hiv.*_all$|_mean_hiv.*(_all)?$\") ~ \"hiv_stage\",", 
+"      stringr::str_detect(sheet, \"_mean_yr_leef_all$|_mean_leef(_all)?$\") ~ \"leeftijd_cat\",", 
+"      stringr::str_detect(cols, \"geslacht\") ~ \"geslacht\",", 
+"      stringr::str_detect(cols, \"migratie_achtergrond\") ~ \"migratie_achtergrond\",", 
+"      stringr::str_detect(cols, \"hiv_stage\") ~ \"hiv_stage\",", 
+"      stringr::str_detect(cols, \"leeftijd_cat\") ~ \"leeftijd_cat\",", 
+"      TRUE ~ \"none\"", "    ),", "    group_label = dplyr::case_when(", 
+"      group_var == \"none\" ~ \"No subgroup split\",", "      TRUE ~ prettify_factor(group_var)", 
+"    )", "  )", "", "es_index <- sheet_preview |>", "  dplyr::filter(has_es, !has_es_group, !sheet %in% c(\"codes\", \"matching_stats\")) |>", 
+"  dplyr::mutate(dataset_label = prettify_label(dataset))", "", 
+"es_group_index <- sheet_preview |>", "  dplyr::filter(has_es_group, !sheet %in% c(\"codes\", \"matching_stats\")) |>", 
+"  dplyr::mutate(dataset_label = prettify_label(dataset))", "", 
+"profile_sheet_name <- dplyr::first(sheet_preview$sheet[sheet_preview$has_profile])", 
+"shm_sheet_name <- dplyr::first(sheet_preview$sheet[sheet_preview$has_shm_total & sheet_preview$sheet != \"codes\" & sheet_preview$sheet != \"matching_stats\"])", 
+"", "cache_env <- new.env(parent = emptyenv())", "get_sheet <- function(sheet_name) {", 
+"  req(!is.na(sheet_name), nzchar(sheet_name))", "  key <- paste0(\"sheet__\", sheet_name)", 
+"  if (!exists(key, envir = cache_env, inherits = FALSE)) {", 
+"    df <- safe_read_sheet(data_path, sheet_name)", "    assign(key, df, envir = cache_env)", 
+"    log_msg(sprintf(\"[cache] Loaded %s (%d rows)\", sheet_name, nrow(df)))", 
+"  }", "  get(key, envir = cache_env, inherits = FALSE)", "}", 
+"", "ui <- navbarPage(", "  title = \"Understanding HIV care in the Netherlands\",", 
+"  id = \"main_nav\",", "  header = tags$div(", "    style = \"padding: 12px 18px 4px 18px; color: #4b5563; font-size: 14px;\",", 
+"    \"Explore healthcare costs, medication use, profiles, and event-study estimates for people with HIV and matched controls.\"", 
+"  ),", "  ", "  tabPanel(", "    \"Overview\",", "    fluidPage(", 
+"      br(),", "      fluidRow(", "        column(", "          12,", 
+"          h4(\"Totals\"),", "          plotlyOutput(\"plot_shm_total\", height = \"460px\"),", 
+"          DTOutput(\"tbl_shm_total\")", "        )", "      )", 
+"    )", "  ),", "  ", "  tabPanel(", "    \"Profiles\",", "    sidebarLayout(", 
+"      sidebarPanel(", "        selectInput(\"profile_category\", \"Category\", choices = NULL),", 
+"        downloadButton(\"dl_profile\", \"Download filtered profile data (Excel)\")", 
+"      ),", "      mainPanel(", "        plotlyOutput(\"plot_profile\", height = \"820px\"),", 
+"        DTOutput(\"tbl_profile\")", "      )", "    )", "  ),", 
+"  ", "  tabPanel(", "    \"Aggregated means\",", "    sidebarLayout(", 
+"      sidebarPanel(", "        selectInput(\"mean_dataset\", \"Dataset\", choices = NULL),", 
+"        radioButtons(\"mean_time_scale\", \"Time scale\", choices = c(\"Years since diagnosis\", \"Calendar year\")),", 
+"        selectInput(\"mean_group_var\", \"Subgroup split\", choices = NULL),", 
+"        selectInput(\"mean_variable\", \"Outcome variable\", choices = NULL),", 
+"        selectInput(\"mean_type\", \"Statistic type\", choices = NULL),", 
+"        uiOutput(\"mean_inflation_ui\"),", "        uiOutput(\"mean_group_filter_ui\"),", 
+"        downloadButton(\"dl_mean\", \"Download filtered mean data (Excel)\")", 
+"      ),", "      mainPanel(", "        plotlyOutput(\"plot_mean\", height = \"660px\"),", 
+"        DTOutput(\"tbl_mean\")", "      )", "    )", "  ),", 
+"  ", "  tabPanel(", "    \"Event study\",", "    sidebarLayout(", 
+"      sidebarPanel(", "        selectInput(\"es_dataset\", \"Dataset\", choices = NULL),", 
+"        selectInput(\"es_outcome\", \"Outcome\", choices = NULL),", 
+"        downloadButton(\"dl_es\", \"Download filtered event-study data (Excel)\")", 
+"      ),", "      mainPanel(", "        uiOutput(\"es_avg_effect\"),", 
+"        plotlyOutput(\"plot_es\", height = \"660px\"),", "        DTOutput(\"tbl_es_summary\"),", 
+"        DTOutput(\"tbl_es\")", "      )", "    )", "  ),", "  ", 
+"  tabPanel(", "    \"Event study by group\",", "    sidebarLayout(", 
+"      sidebarPanel(", "        selectInput(\"esg_dataset\", \"Dataset\", choices = NULL),", 
+"        selectInput(\"esg_factor\", \"Grouping factor\", choices = NULL),", 
+"        selectInput(\"esg_outcome\", \"Outcome\", choices = NULL),", 
+"        selectizeInput(\"esg_groups\", \"Visible groups\", choices = NULL, multiple = TRUE),", 
+"        downloadButton(\"dl_esg\", \"Download filtered grouped event-study data (Excel)\")", 
+"      ),", "      mainPanel(", "        uiOutput(\"esg_avg_effect\"),", 
+"        plotlyOutput(\"plot_esg\", height = \"660px\"),", "        DTOutput(\"tbl_esg_summary\"),", 
+"        DTOutput(\"tbl_esg\")", "      )", "    )", "  )", ")", 
+"", "server <- function(input, output, session) {", "  error_log <- reactiveVal(character())", 
+"  add_error <- function(msg) {", "    log_msg(msg)", "    error_log(c(error_log(), msg))", 
+"  }", "  ", "  shm_total_df <- reactive({", "    req(!is.na(shm_sheet_name))", 
+"    get_sheet(shm_sheet_name)", "  })", "  ", "  profile_df <- reactive({", 
+"    req(!is.na(profile_sheet_name))", "    get_sheet(profile_sheet_name)", 
+"  })", "  ", "  observe({", "    prof <- profile_df()", "    if (nrow(prof) > 0) {", 
+"      cats <- sort(unique(prof$category))", "      updateSelectInput(session, \"profile_category\", choices = cats, selected = cats[1])", 
+"    }", "  })", "  ", "  output$tbl_shm_total <- renderDT({", 
+"    DT::datatable(shm_total_df(), options = list(pageLength = 10, scrollX = TRUE))", 
+"  })", "  ", "  output$plot_shm_total <- renderPlotly({", "    df <- shm_total_df()", 
+"    req(nrow(df) > 0, \"year\" %in% names(df))", "    value_cols <- setdiff(names(df), \"year\")", 
+"    df_long <- df |>", "      tidyr::pivot_longer(dplyr::all_of(value_cols), names_to = \"series\", values_to = \"value_raw\") |>", 
+"      dplyr::mutate(", "        year = suppressWarnings(as.numeric(year)),", 
+"        value = suppressWarnings(as.numeric(value_raw))", "      ) |>", 
+"      dplyr::filter(!is.na(value), !is.na(year)) |>", "      dplyr::mutate(", 
+"        tooltip = paste0(", "          \"Series: \", series, \"<br>\",", 
+"          \"Year: \", year, \"<br>\",", "          \"Value: \", scales::comma(value)", 
+"        )", "      )", "    ", "    req(nrow(df_long) > 0)", 
+"    ", "    p <- plotly::plot_ly()", "    for (s in unique(df_long$series)) {", 
+"      trace_df <- df_long[df_long$series == s, , drop = FALSE]", 
+"      p <- p |>", "        plotly::add_trace(", "          data = trace_df,", 
+"          x = ~year,", "          y = ~value,", "          type = \"scatter\",", 
+"          mode = \"lines+markers\",", "          name = s,", 
+"          text = ~tooltip,", "          hoverinfo = \"text\"", 
+"        )", "    }", "    ", "    p |>", "      plotly::layout(", 
+"        title = list(text = \"Totals over time\"),", "        xaxis = list(title = \"\"),", 
+"        yaxis = list(title = \"Count\"),", "        legend = list(title = list(text = \"\"))", 
+"      )", "  })", "  ", "  filtered_profile <- reactive({", 
+"    df <- profile_df()", "    req(nrow(df) > 0, input$profile_category)", 
+"    df |>", "      dplyr::filter(category == input$profile_category) |>", 
+"      dplyr::mutate(", "        has_hiv_label = prettify_hiv(has_hiv),", 
+"        level = as.character(level)", "      )", "  })", "  ", 
+"  output$plot_profile <- renderPlotly({", "    df <- filtered_profile()", 
+"    req(nrow(df) > 0)", "    ", "    df_plot <- df |>", "      dplyr::filter(!is.na(share), share <= 1, !tolower(level) %in% c(\"all\", \"unknown\"))", 
+"    if (nrow(df_plot) == 0) {", "      df_plot <- df |>", "        dplyr::filter(!is.na(share), share <= 1)", 
+"    }", "    metric_col <- \"share\"", "    metric_lab <- \"Share\"", 
+"    df_plot <- df_plot |>", "      dplyr::mutate(", "        metric_value = share,", 
+"        value_label = scales::percent(share, accuracy = 1)", 
+"      )", "    ", "    req(nrow(df_plot) > 0)", "    ", "    level_order <- df_plot |>", 
+"      dplyr::group_by(level) |>", "      dplyr::summarise(order_value = max(metric_value, na.rm = TRUE), .groups = \"drop\") |>", 
+"      dplyr::arrange(order_value) |>", "      dplyr::pull(level)", 
+"    ", "    df_plot <- df_plot |>", "      dplyr::mutate(", 
+"        level = factor(stringr::str_wrap(level, width = 28),", 
+"                       levels = stringr::str_wrap(level_order, width = 28)),", 
+"        tooltip = paste0(", "          \"Level: \", gsub(\"\\n\", \" \", as.character(level)), \"<br>\",", 
+"          \"Population: \", has_hiv_label, \"<br>\",", "          metric_lab, \": \", value_label", 
+"        )", "      )", "    ", "    p <- plotly::plot_ly()", 
+"    for (grp in unique(df_plot$has_hiv_label)) {", "      trace_df <- df_plot[df_plot$has_hiv_label == grp, , drop = FALSE]", 
+"      p <- p |>", "        plotly::add_trace(", "          data = trace_df,", 
+"          x = ~metric_value,", "          y = ~level,", "          type = \"bar\",", 
+"          orientation = \"h\",", "          name = grp,", "          text = ~value_label,", 
+"          textposition = \"auto\",", "          customdata = ~tooltip,", 
+"          hovertemplate = \"%{customdata}<extra></extra>\"", 
+"        )", "    }", "    ", "    p |>", "      plotly::layout(", 
+"        barmode = \"group\",", "        title = list(text = paste(\"Profile:\", prettify_factor(input$profile_category))),", 
+"        xaxis = list(title = metric_lab, tickformat = if (metric_col == \"share\") \",.0%\" else NULL),", 
+"        yaxis = list(title = \"\"),", "        legend = list(orientation = \"h\", x = 0, y = -0.12)", 
+"      )", "  })", "  ", "  output$tbl_profile <- renderDT({", 
+"    DT::datatable(filtered_profile(), options = list(pageLength = 15, scrollX = TRUE))", 
+"  })", "  ", "  observe({", "    ds_choices <- sort(unique(means_index$dataset_label))", 
+"    if (length(ds_choices) > 0) {", "      selected <- isolate(input$mean_dataset)", 
+"      if (is.null(selected) || !(selected %in% ds_choices)) selected <- ds_choices[1]", 
+"      updateSelectInput(session, \"mean_dataset\", choices = ds_choices, selected = selected)", 
+"    }", "  })", "  ", "  mean_sheet_choice <- reactive({", "    req(input$mean_dataset, input$mean_time_scale)", 
+"    ", "    candidates <- means_index |>", "      dplyr::filter(", 
+"        dataset_label == input$mean_dataset,", "        time_scale == input$mean_time_scale", 
+"      )", "    ", "    req(nrow(candidates) > 0)", "    candidates", 
+"  })", "  ", "  observe({", "    candidates <- mean_sheet_choice()", 
+"    choices <- unique(candidates$group_label)", "    ", "    choices <- c(", 
+"      \"No subgroup split\",", "      sort(setdiff(choices, \"No subgroup split\"))", 
+"    )", "    choices <- unique(choices[choices %in% candidates$group_label])", 
+"    ", "    selected <- isolate(input$mean_group_var)", "    if (is.null(selected) || !(selected %in% choices)) selected <- choices[1]", 
+"    ", "    updateSelectInput(session, \"mean_group_var\", choices = choices, selected = selected)", 
+"  })", "  ", "  mean_sheet_selected <- reactive({", "    candidates <- mean_sheet_choice()", 
+"    req(input$mean_group_var)", "    ", "    rows <- candidates |>", 
+"      dplyr::filter(group_label == input$mean_group_var)", "    ", 
+"    if (nrow(rows) == 0) {", "      rows <- candidates", "    }", 
+"    ", "    if (identical(input$mean_time_scale, \"Calendar year\")) {", 
+"      if (identical(input$mean_group_var, \"No subgroup split\")) {", 
+"        preferred <- rows |>", "          dplyr::filter(stringr::str_detect(sheet, \"_mean_yr_all$\"))", 
+"      } else {", "        preferred <- rows |>", "          dplyr::filter(stringr::str_detect(sheet, \"_mean_yr_.*_all$\"))", 
+"      }", "      ", "      if (nrow(preferred) > 0) {", "        rows <- preferred", 
+"      }", "    }", "    ", "    row <- rows |>", "      dplyr::arrange(sheet) |>", 
+"      dplyr::slice(1)", "    ", "    req(nrow(row) == 1)", "    row", 
+"  })", "  ", "  mean_data_raw <- reactive({", "    get_sheet(mean_sheet_selected()$sheet[[1]])", 
+"  })", "  ", "  observe({", "    df <- mean_data_raw()", "    req(nrow(df) > 0)", 
+"    var_choices <- sort(unique(df$name))", "    type_choices <- sort(unique(df$type))", 
+"    ", "    selected_var <- isolate(input$mean_variable)", "    if (is.null(selected_var) || !(selected_var %in% var_choices)) selected_var <- var_choices[1]", 
+"    ", "    selected_type <- isolate(input$mean_type)", "    default_type <- dplyr::coalesce(type_choices[type_choices == \"gemiddelde_per_persoon\"][1], type_choices[1])", 
+"    if (is.null(selected_type) || !(selected_type %in% type_choices)) selected_type <- default_type", 
+"    ", "    updateSelectInput(session, \"mean_variable\", choices = var_choices, selected = selected_var)", 
+"    updateSelectInput(", "      session,", "      \"mean_type\",", 
+"      choices = type_choices,", "      selected = selected_type", 
+"    )", "  })", "", "  output$mean_inflation_ui <- renderUI({", 
+"    req(input$mean_time_scale, input$mean_variable)", "", "    if (!identical(input$mean_time_scale, \"Calendar year\") || !isTRUE(is_cost_variable(input$mean_variable))) {", 
+"      return(NULL)", "    }", "", "    checkboxInput(", "      \"mean_adjust_inflation\",", 
+"      \"Adjust costs to 2023 EUR using CPI\",", "      value = FALSE", 
+"    )", "  })", "  ", "  output$mean_group_filter_ui <- renderUI({", 
+"    df <- mean_data_raw()", "    req(nrow(df) > 0)", "    group_var <- mean_sheet_selected()$group_var[[1]]", 
+"    if (group_var == \"none\" || !(group_var %in% names(df))) {", 
+"      return(NULL)", "    }", "    choices <- sort(unique(as.character(df[[group_var]])))", 
+"    selected <- isolate(input$mean_group_values)", "    if (is.null(selected) || length(selected) == 0) {", 
+"      selected <- choices", "    } else {", "      selected <- intersect(selected, choices)", 
+"      if (length(selected) == 0) selected <- choices", "    }", 
+"    selectizeInput(\"mean_group_values\", prettify_factor(group_var), choices = choices, selected = selected, multiple = TRUE)", 
+"  })", "  ", "  filtered_mean <- reactive({", "    df <- mean_data_raw()", 
+"    req(nrow(df) > 0, input$mean_variable, input$mean_type)", 
+"    ", "    df <- df |>", "      dplyr::filter(name == input$mean_variable, type == input$mean_type) |>", 
+"      dplyr::mutate(", "        has_hiv_label = prettify_hiv(has_hiv),", 
+"        pretty_variable = prettify_label(name),", "        display_name = as.character(name)", 
+"      )", "    ", "    group_var <- mean_sheet_selected()$group_var[[1]]", 
+"    x_var <- if (\"years_since_diagnosis\" %in% names(df)) \"years_since_diagnosis\" else \"year\"", 
+"    ", "    if (group_var != \"none\" && group_var %in% names(df)) {", 
+"      selected_groups <- input$mean_group_values", "      if (!is.null(selected_groups) && length(selected_groups) > 0) {", 
+"        df <- df |>", "          dplyr::filter(as.character(.data[[group_var]]) %in% selected_groups)", 
+"      }", "      df <- df |>", "        dplyr::mutate(group_value = as.character(.data[[group_var]]))", 
+"    } else {", "      df <- df |>", "        dplyr::mutate(group_value = \"All\")", 
+"    }", "    ", "    df <- df |>", "      dplyr::mutate(", "        x_value = suppressWarnings(as.numeric(.data[[x_var]]))", 
+"      ) |>", "      dplyr::filter(!is.na(x_value), !is.na(value))", 
+"", "    if (identical(x_var, \"year\")) {", "      df <- df |>", 
+"        dplyr::left_join(cpi_index, by = \"year\")", "    } else {", 
+"      df <- df |>", "        dplyr::mutate(cpi = NA_real_)", 
+"    }", "", "    adjust_for_inflation <- identical(input$mean_time_scale, \"Calendar year\") &&", 
+"      isTRUE(is_cost_variable(input$mean_variable)) &&", "      isTRUE(input$mean_adjust_inflation)", 
+"", "    df <- df |>", "      dplyr::mutate(", "        value_nominal = value,", 
+"        value_adjusted_2023 = dplyr::if_else(", "          !is.na(cpi) & cpi > 0,", 
+"          value / cpi,", "          value", "        )", "      )", 
+"", "    if (adjust_for_inflation) {", "      df <- df |>", "        dplyr::mutate(", 
+"          value_plot = value_adjusted_2023,", "          value_tooltip = paste0(", 
+"            \"Value (2023 EUR): \", scales::comma(value_plot),", 
+"            \"<br>Nominal value: \", scales::comma(value_nominal)", 
+"          )", "        )", "    } else {", "      df <- df |>", 
+"        dplyr::mutate(", "          value_plot = value_nominal,", 
+"          value_tooltip = paste0(\"Value: \", scales::comma(value_plot))", 
+"        )", "    }", "", "    df", "  })", "  ", "  output$plot_mean <- renderPlotly({", 
+"    df <- filtered_mean()", "    req(nrow(df) > 0)", "    ", 
+"    x_var <- if (\"years_since_diagnosis\" %in% names(df)) \"years_since_diagnosis\" else \"year\"", 
+"    group_var <- mean_sheet_selected()$group_var[[1]]", "    facet_formula <- if (group_var != \"none\") ~ group_value else NULL", 
+"    adjust_for_inflation <- identical(input$mean_time_scale, \"Calendar year\") &&", 
+"      isTRUE(is_cost_variable(input$mean_variable)) &&", "      isTRUE(input$mean_adjust_inflation)", 
+"    palette_vals <- c(", "      \"Matched controls / no HIV\" = \"gray50\",", 
+"      \"People with HIV\" = \"steelblue4\"", "    )", "    ", 
+"    p <- ggplot(", "      df,", "      aes(", "        x = x_value,", 
+"        y = value_plot,", "        color = has_hiv_label,", 
+"        group = has_hiv_label,", "        text = paste0(", "          \"Outcome: \", pretty_variable, \"<br>\",", 
+"          \"Series: \", has_hiv_label, \"<br>\",", "          ifelse(x_var == \"year\", \"Year: \", \"Years since diagnosis: \"), x_value, \"<br>\",", 
+"          value_tooltip", "        )", "      )", "    ) +", 
+"      geom_line(linewidth = 1, linetype = \"solid\") +", "      geom_point(size = 2) +", 
+"      scale_color_manual(values = palette_vals, drop = FALSE) +", 
+"      theme_minimal(base_size = 13) +", "      labs(", "        title = paste(", 
+"          \"Aggregated means:\",", "          unique(df$pretty_variable),", 
+"          if (adjust_for_inflation) \"(2023 EUR)\" else \"\"", 
+"        ),", "        subtitle = paste(input$mean_dataset, \"-\", input$mean_group_var),", 
+"        x = ifelse(x_var == \"year\", \"Calendar year\", \"Years since diagnosis\"),", 
+"        y = if (adjust_for_inflation) \"Value (2023 EUR)\" else \"Value\",", 
+"        color = NULL", "      )", "    ", "    if (!is.null(facet_formula)) {", 
+"      p <- p + facet_wrap(facet_formula, scales = \"fixed\", ncol = 1)", 
+"    }", "    ", "    if (x_var == \"years_since_diagnosis\") {", 
+"      p <- p + geom_vline(xintercept = 0, linetype = \"dashed\", color = \"red\")", 
+"    }", "    ", "    plotly::ggplotly(p, tooltip = \"text\")", 
+"  })", "  ", "  output$tbl_mean <- renderDT({", "    DT::datatable(filtered_mean(), options = list(pageLength = 15, scrollX = TRUE))", 
+"  })", "  ", "  observe({", "    ds_choices <- sort(unique(es_index$dataset_label))", 
+"    if (length(ds_choices) > 0) {", "      updateSelectInput(session, \"es_dataset\", choices = ds_choices, selected = ds_choices[1])", 
+"    }", "  })", "  ", "  es_sheet_selected <- reactive({", "    req(input$es_dataset)", 
+"    row <- es_index |>", "      dplyr::filter(dataset_label == input$es_dataset) |>", 
+"      dplyr::slice(1)", "    req(nrow(row) == 1)", "    row", 
+"  })", "  ", "  es_data_raw <- reactive({", "    get_sheet(es_sheet_selected()$sheet[[1]])", 
+"  })", "  ", "  observe({", "    df <- es_data_raw()", "    req(nrow(df) > 0)", 
+"    outc <- sort(unique(df$outcome))", "    updateSelectInput(session, \"es_outcome\", choices = outc, selected = outc[1])", 
+"  })", "  ", "  filtered_es <- reactive({", "    es_data_raw() |>", 
+"      dplyr::filter(outcome == input$es_outcome) |>", "      dplyr::mutate(", 
+"        outcome_label = prettify_label(outcome),", "        avg_effect_label = dplyr::case_when(", 
+"          !is.na(total_effect) ~ sprintf(\"%.3f\", total_effect),", 
+"          TRUE ~ \"NA\"", "        )", "      ) |>", "      dplyr::arrange(years_since_diagnosis)", 
+"  })", "  ", "  es_summary <- reactive({", "    df <- filtered_es()", 
+"    req(nrow(df) > 0)", "    df |>", "      dplyr::summarise(", 
+"        outcome = dplyr::first(outcome_label),", "        average_post_treatment_effect = dplyr::first(total_effect),", 
+"        average_post_treatment_se = dplyr::first(total_se),", 
+"        n = dplyr::first(n)", "      )", "  })", "  ", "  output$es_avg_effect <- renderUI({", 
+"    sm <- es_summary()", "    req(nrow(sm) > 0)", "    effect_txt <- ifelse(is.na(sm$average_post_treatment_effect[[1]]), \"NA\", sprintf(\"%.3f\", sm$average_post_treatment_effect[[1]]))", 
+"    se_txt <- ifelse(is.na(sm$average_post_treatment_se[[1]]), \"NA\", sprintf(\"%.3f\", sm$average_post_treatment_se[[1]]))", 
+"    HTML(sprintf(\"<div style='margin-bottom:10px;'><b>Average post-treatment effect:</b> %s &nbsp;&nbsp; <b>SE:</b> %s</div>\", effect_txt, se_txt))", 
+"  })", "  ", "  output$plot_es <- renderPlotly({", "    df <- filtered_es()", 
+"    sm <- es_summary()", "    req(nrow(df) > 0, nrow(sm) > 0)", 
+"    ", "    subtitle_txt <- sprintf(", "      \"Average post-treatment effect: %s | SE: %s\",", 
+"      ifelse(is.na(sm$average_post_treatment_effect[[1]]), \"NA\", sprintf(\"%.3f\", sm$average_post_treatment_effect[[1]])),", 
+"      ifelse(is.na(sm$average_post_treatment_se[[1]]), \"NA\", sprintf(\"%.3f\", sm$average_post_treatment_se[[1]]))", 
+"    )", "    ", "    p <- ggplot(", "      df,", "      aes(", 
+"        x = years_since_diagnosis,", "        y = coef,", "        text = paste0(", 
+"          \"Year: \", years_since_diagnosis, \"<br>\",", "          \"Estimate: \", round(coef, 3), \"<br>\",", 
+"          \"95% CI: [\", round(lo, 3), \", \", round(hi, 3), \"]<br>\",", 
+"          \"Average post-treatment effect: \",", "          ifelse(is.na(total_effect), \"NA\", sprintf(\"%.3f\", total_effect)),", 
+"          \"<br>Average post-treatment SE: \",", "          ifelse(is.na(total_se), \"NA\", sprintf(\"%.3f\", total_se))", 
+"        )", "      )", "    ) +", "      geom_errorbar(aes(ymin = lo, ymax = hi), width = 0.1, color = \"steelblue4\") +", 
+"      geom_line(linewidth = 1, linetype = \"dashed\", color = \"steelblue4\") +", 
+"      geom_point(size = 2, color = \"steelblue4\") +", "      geom_hline(yintercept = 0, linetype = \"dashed\", color = \"gray40\") +", 
+"      geom_vline(xintercept = 0, linetype = \"dashed\", color = \"red\") +", 
+"      scale_x_continuous(breaks = sort(unique(df$years_since_diagnosis))) +", 
+"      theme_minimal(base_size = 13) +", "      labs(", "        title = paste(\"Event study:\", unique(df$outcome_label)),", 
+"        subtitle = subtitle_txt,", "        x = \"Years since diagnosis\",", 
+"        y = \"Change relative to pre-diagnosis\"", "      )", 
+"    ", "    plotly::ggplotly(p, tooltip = \"text\")", "  })", 
+"  ", "  output$tbl_es_summary <- renderDT({", "    sm <- es_summary() |>", 
+"      dplyr::mutate(", "        dplyr::across(c(average_post_treatment_effect, average_post_treatment_se), ~ round(.x, 3))", 
+"      )", "    DT::datatable(sm, options = list(dom = 't', scrollX = TRUE), rownames = FALSE)", 
+"  })", "  ", "  output$tbl_es <- renderDT({", "    DT::datatable(filtered_es(), options = list(pageLength = 15, scrollX = TRUE))", 
+"  })", "  ", "  observe({", "    ds_choices <- sort(unique(es_group_index$dataset_label))", 
+"    if (length(ds_choices) > 0) {", "      updateSelectInput(session, \"esg_dataset\", choices = ds_choices, selected = ds_choices[1])", 
+"    }", "  })", "  ", "  esg_data_raw <- reactive({", "    req(input$esg_dataset)", 
+"    sheet <- es_group_index |>", "      dplyr::filter(dataset_label == input$esg_dataset) |>", 
+"      dplyr::slice(1) |>", "      dplyr::pull(sheet)", "    req(length(sheet) == 1)", 
+"    get_sheet(sheet)", "  })", "  ", "  observe({", "    df <- esg_data_raw()", 
+"    req(nrow(df) > 0)", "    ", "    facs <- sort(unique(df$factor))", 
+"    selected <- isolate(input$esg_factor)", "    if (is.null(selected) || !(selected %in% facs)) selected <- facs[1]", 
+"    ", "    updateSelectInput(", "      session,", "      \"esg_factor\",", 
+"      choices = stats::setNames(facs, prettify_factor(facs)),", 
+"      selected = selected", "    )", "  })", "  ", "  observe({", 
+"    df <- esg_data_raw()", "    req(nrow(df) > 0, input$esg_factor)", 
+"    outc <- df |>", "      dplyr::filter(factor == input$esg_factor) |>", 
+"      dplyr::pull(outcome) |>", "      unique() |>", "      sort()", 
+"    updateSelectInput(session, \"esg_outcome\", choices = outc, selected = outc[1])", 
+"  })", "  ", "  observe({", "    df <- esg_data_raw()", "    req(nrow(df) > 0, input$esg_factor, input$esg_outcome)", 
+"    groups <- df |>", "      dplyr::filter(factor == input$esg_factor, outcome == input$esg_outcome) |>", 
+"      dplyr::pull(group) |>", "      unique() |>", "      sort()", 
+"    updateSelectizeInput(session, \"esg_groups\", choices = groups, selected = groups, server = TRUE)", 
+"  })", "  ", "  filtered_esg <- reactive({", "    df <- esg_data_raw()", 
+"    req(nrow(df) > 0, input$esg_factor, input$esg_outcome)", 
+"    df <- df |>", "      dplyr::filter(factor == input$esg_factor, outcome == input$esg_outcome)", 
+"    if (!is.null(input$esg_groups) && length(input$esg_groups) > 0) {", 
+"      df <- df |>", "        dplyr::filter(group %in% input$esg_groups)", 
+"    }", "    df |>", "      dplyr::arrange(group, years_since_diagnosis) |>", 
+"      dplyr::mutate(", "        factor_label = prettify_factor(factor),", 
+"        outcome_label = prettify_label(outcome)", "      )", 
+"  })", "  ", "  esg_summary <- reactive({", "    df <- filtered_esg()", 
+"    req(nrow(df) > 0)", "    df |>", "      dplyr::group_by(group) |>", 
+"      dplyr::summarise(", "        average_post_treatment_effect = dplyr::first(total_effect),", 
+"        average_post_treatment_se = dplyr::first(total_se),", 
+"        n = dplyr::first(n),", "        .groups = \"drop\"", 
+"      ) |>", "      dplyr::arrange(group)", "  })", "  ", "  output$esg_avg_effect <- renderUI({", 
+"    sm <- esg_summary()", "    req(nrow(sm) > 0)", "    summary_txt <- paste(", 
+"      paste0(", "        sm$group, \": \",", "        ifelse(is.na(sm$average_post_treatment_effect), \"NA\", sprintf(\"%.3f\", sm$average_post_treatment_effect)),", 
+"        \" (SE \",", "        ifelse(is.na(sm$average_post_treatment_se), \"NA\", sprintf(\"%.3f\", sm$average_post_treatment_se)),", 
+"        \")\"", "      ),", "      collapse = \" | \"", "    )", 
+"    HTML(sprintf(\"<div style='margin-bottom:10px;'><b>Average post-treatment effect by group:</b> %s</div>\", summary_txt))", 
+"  })", "  ", "  output$plot_esg <- renderPlotly({", "    df <- filtered_esg()", 
+"    sm <- esg_summary()", "    req(nrow(df) > 0, nrow(sm) > 0)", 
+"    ", "    subtitle_txt <- paste0(", "      unique(df$factor_label),", 
+"      \" | Avg post-treatment effect: \",", "      paste(", 
+"        paste0(", "          sm$group, \"=\",", "          ifelse(is.na(sm$average_post_treatment_effect), \"NA\", sprintf(\"%.3f\", sm$average_post_treatment_effect)),", 
+"          \" (SE \",", "          ifelse(is.na(sm$average_post_treatment_se), \"NA\", sprintf(\"%.3f\", sm$average_post_treatment_se)),", 
+"          \")\"", "        ),", "        collapse = \"; \"", 
+"      )", "    )", "    ", "    p <- ggplot(", "      df,", 
+"      aes(", "        x = years_since_diagnosis,", "        y = coef,", 
+"        color = group,", "        group = group,", "        text = paste0(", 
+"          \"Group: \", group, \"<br>\",", "          \"Year: \", years_since_diagnosis, \"<br>\",", 
+"          \"Estimate: \", round(coef, 3), \"<br>\",", "          \"95% CI: [\", round(lo, 3), \", \", round(hi, 3), \"]<br>\",", 
+"          \"Average post-treatment effect: \",", "          ifelse(is.na(total_effect), \"NA\", sprintf(\"%.3f\", total_effect)),", 
+"          \"<br>Average post-treatment SE: \",", "          ifelse(is.na(total_se), \"NA\", sprintf(\"%.3f\", total_se))", 
+"        )", "      )", "    ) +", "      geom_errorbar(aes(ymin = lo, ymax = hi), width = 0.1) +", 
+"      geom_line(linewidth = 1, linetype = \"dashed\") +", "      geom_point(size = 2) +", 
+"      geom_hline(yintercept = 0, linetype = \"dashed\", color = \"gray40\") +", 
+"      geom_vline(xintercept = 0, linetype = \"dashed\", color = \"red\") +", 
+"      scale_x_continuous(breaks = sort(unique(df$years_since_diagnosis))) +", 
+"      theme_minimal(base_size = 13) +", "      labs(", "        title = paste(\"Event study by group:\", unique(df$outcome_label)),", 
+"        subtitle = subtitle_txt,", "        x = \"Years since diagnosis\",", 
+"        y = \"Change relative to pre-diagnosis\",", "        color = NULL", 
+"      )", "    ", "    plotly::ggplotly(p, tooltip = \"text\")", 
+"  })", "  ", "  output$tbl_esg_summary <- renderDT({", "    sm <- esg_summary() |>", 
+"      dplyr::mutate(", "        dplyr::across(c(average_post_treatment_effect, average_post_treatment_se), ~ round(.x, 3))", 
+"      )", "    DT::datatable(sm, options = list(dom = 't', scrollX = TRUE), rownames = FALSE)", 
+"  })", "  ", "  output$tbl_esg <- renderDT({", "    DT::datatable(filtered_esg(), options = list(pageLength = 15, scrollX = TRUE))", 
+"  })", "  ", "  output$dl_profile <- downloadHandler(", "    filename = function() paste0(\"profile_\", input$profile_category, \"_\", Sys.Date(), \".xlsx\"),", 
+"    content = function(file) writexl::write_xlsx(filtered_profile(), path = file)", 
+"  )", "  ", "  output$dl_mean <- downloadHandler(", "    filename = function() paste0(\"aggregated_means_\", Sys.Date(), \".xlsx\"),", 
+"    content = function(file) writexl::write_xlsx(filtered_mean(), path = file)", 
+"  )", "  ", "  output$dl_es <- downloadHandler(", "    filename = function() paste0(\"event_study_\", Sys.Date(), \".xlsx\"),", 
+"    content = function(file) writexl::write_xlsx(filtered_es(), path = file)", 
+"  )", "  ", "  output$dl_esg <- downloadHandler(", "    filename = function() paste0(\"event_study_by_group_\", Sys.Date(), \".xlsx\"),", 
+"    content = function(file) writexl::write_xlsx(filtered_esg(), path = file)", 
+"  )", "}", "", "options(shiny.error = function() {", "  err <- geterrmessage()", 
+"  message(sprintf(\"[shiny.error] %s\", err))", "  writeLines(sprintf(\"[shiny.error] %s\", err), con = \"shiny_error.log\")", 
+"})", "", "if (exists(\"secure_app\", mode = \"function\") && exists(\"secure_server\", mode = \"function\")) {", 
+"  shinyApp(ui = secure_app(ui), server = server)", "} else {", 
+"  shinyApp(ui, server)", "}")
+
+
+embedded_iteration_3_code <- c("cat(\"\\n========== HIV DASHBOARD APP STARTUP (ITERATION 3) ==========\\n\")", 
+"cat(paste0(\"Time: \", Sys.time(), \"\\n\"))", "cat(paste0(\"Working directory: \", getwd(), \"\\n\"))", 
+"cat(\"=============================================================\\n\\n\")", 
+"flush.console()", "", "packages <- c(", "  \"shiny\",", "  \"readxl\",", 
+"  \"openxlsx\",", "  \"dplyr\",", "  \"tidyr\",", "  \"ggplot2\",", 
+"  \"plotly\",", "  \"DiagrammeR\",", "  \"DiagrammeRsvg\",", 
+"  \"rsvg\",", "  \"purrr\",", "  \"stringr\",", "  \"tibble\",", 
+"  \"DT\",", "  \"scales\",", "  \"grid\"", ")", "", "new_packages <- packages[!(packages %in% installed.packages()[, \"Package\"])]", 
+"if (length(new_packages) > 0) {", "  install.packages(", "    new_packages,", 
+"    lib = Sys.getenv(\"R_LIBS_USER\"),", "    repos = \"https://cran.r-project.org\"", 
+"  )", "}", "", "invisible(lapply(packages, library, character.only = TRUE))", 
+"", "if (getRversion() >= \"2.15.1\") {", "  utils::globalVariables(c(", 
+"    \"sheet\", \"dataset\", \"dataset_label\", \"group_var\", \"group_label\",", 
+"    \"outcome\", \"years_since_diagnosis\", \"year\", \"has_hiv\", \"value\", \"type\",", 
+"    \"coef\", \"lo\", \"hi\", \"group\", \"factor\", \"category\", \"level\", \"share\",", 
+"    \"N\", \"series\", \"x_value\", \"has_hiv_label\", \"group_value\",", 
+"    \"pretty_variable\", \"outcome_label\", \"factor_label\", \"display_name\",", 
+"    \"value_nominal\", \"value_adjusted_2023\", \"value_plot\", \"cpi\",", 
+"    \"population_label\", \"predicted_value\", \"split_label_wrapped\", \"node_label\",", 
+"    \"x\", \"y\", \"xend\", \"yend\", \"tooltip\", \"tree_type\", \"view_label\",", 
+"    \"model_label\", \"outcome_label_tree\", \"n_totaal\", \"name\", \"bin_mid\",", 
+"    \"n_total\", \"bin_start\", \"bin_end\", \"total_n\", \"predicted_class\",", 
+"    \"level_raw\", \"value_label\", \"avg_effect_ci_label\", \"ci_low\", \"ci_high\",", 
+"    \"coef_label\", \"lo_label\", \"hi_label\", \"average_ci_low\", \"average_ci_high\",", 
+"    \"average_effect_ci\", \"name_factor\", \"value_mln\", \"series_label\"", 
+"  ))", "}", "", "`%||%` <- function(x, y) {", "  if (is.null(x) || length(x) == 0 || all(is.na(x))) y else x", 
+"}", "", "log_file <- \"hiv_dashboard_iteration3_log.txt\"", 
+"unlink(log_file)", "", "log_msg <- function(msg) {", "  line <- paste0(\"[\", Sys.time(), \"] \", msg)", 
+"  cat(line, \"\\n\", file = log_file, append = TRUE)", "  cat(line, \"\\n\")", 
+"  flush.console()", "}", "", "iteration3_files <- c(", "  counts = \"data/iteration_3/output_counts.xlsx\",", 
+"  descriptives = \"data/iteration_3/output_descriptives.xlsx\",", 
+"  event_study = \"data/iteration_3/output_event_study.xlsx\",", 
+"  trees = \"data/iteration_3/output_trees.xlsx\"", ")", "", 
+"safe_excel_sheets <- function(path) {", "  tryCatch(", "    readxl::excel_sheets(path),", 
+"    error = function(e) {", "      log_msg(sprintf(\"[safe_excel_sheets] Failed to read %s: %s\", path, e$message))", 
+"      character()", "    }", "  )", "}", "", "safe_read_sheet <- function(path, sheet) {", 
+"  tryCatch(", "    readxl::read_excel(path, sheet = sheet, guess_max = 100000),", 
+"    error = function(e) {", "      log_msg(sprintf(\"[safe_read_sheet] Failed to read %s / %s: %s\", path, sheet, e$message))", 
+"      tibble::tibble()", "    }", "  )", "}", "", "prettify_label <- function(x) {", 
+"  x |>", "    stringr::str_replace_all(\"_\", \" \") |>", "    stringr::str_replace_all(\"\\\\s+\", \" \") |>", 
+"    stringr::str_trim() |>", "    stringr::str_to_title()", 
+"}", "", "prettify_factor <- function(x) {", "  dplyr::recode(", 
+"    x,", "    geslacht = \"Sex\",", "    migratie_achtergrond = \"Migration background\",", 
+"    hiv_stage = \"HIV stage\",", "    leeftijd_cat = \"Age category\",", 
+"    burgstaat = \"Marital status\",", "    typehh = \"Household type\",", 
+"    ggd = \"GGD\",", "    hgopl = \"Education\",", "    seswoa_cat = \"Socioeconomic status\",", 
+"    stedgem = \"Urbanisation\",", "    inkomen_klasse = \"Income class\",", 
+"    deeltijdfactor_cat = \"Part-time factor\",", "    contractsoort = \"Contract type\",", 
+"    belanginkbronpers = \"Main income source\",", "    bedrijfstak_10cat = \"Industry\",", 
+"    .default = prettify_label(x)", "  )", "}", "", "prettify_hiv <- function(x) {", 
+"  dplyr::recode(", "    as.character(x),", "    `0` = \"Matched controls / no HIV\",", 
+"    `1` = \"People with HIV\",", "    .default = as.character(x)", 
+"  )", "}", "", "is_cost_variable <- function(x) {", "  x_chr <- as.character(x)", 
+"  !is.na(x_chr) &", "    (", "      stringr::str_detect(x_chr, \"^zvwk\") |", 
+"        stringr::str_detect(x_chr, \"^costs_\")", "    ) &", 
+"    !stringr::str_detect(x_chr, \"^used_\")", "}", "", "is_monetary_variable <- function(x) {", 
+"  x_chr <- as.character(x)", "  !is.na(x_chr) &", "    (", "      is_cost_variable(x_chr) |", 
+"      stringr::str_detect(x_chr, \"^income\") |", "      stringr::str_detect(x_chr, \"^inkpers\") |", 
+"      stringr::str_detect(x_chr, \"^inppersprim\")", "    ) &", 
+"    !stringr::str_detect(x_chr, \"^(has_|used_|gebruikt_)\")", 
+"}", "", "ggd_lookup <- tibble::tribble(", "  ~ggd, ~ggd_name,", 
+"  \"0111\", \"GGD Groningen\",", "  \"0706\", \"GGD Drenthe\",", 
+"  \"1009\", \"GGD IJsselland\",", "  \"1106\", \"GGD Twente\",", 
+"  \"1413\", \"GGD Noord- en Oost-Gelderland\",", "  \"1911\", \"GGD Gelderland-Midden\",", 
+"  \"2014\", \"GGD Gelderland-Zuid\",", "  \"2209\", \"GGD Flevoland\",", 
+"  \"2514\", \"GGD regio Utrecht\",", "  \"2707\", \"GGD Hollands Noorden\",", 
+"  \"3109\", \"GGD Kennemerland\",", "  \"3406\", \"GGD Amsterdam\",", 
+"  \"3606\", \"GGD Gooi en Vechtstreek\",", "  \"4506\", \"GGD Hollands Midden\",", 
+"  \"4607\", \"GGD Rotterdam-Rijnmond\",", "  \"4816\", \"Dienst Gezondheid & Jeugd ZHZ\",", 
+"  \"5006\", \"GGD Zeeland\",", "  \"5206\", \"GGD West-Brabant\",", 
+"  \"5406\", \"GGD Hart voor Brabant\",", "  \"5608\", \"GGD Brabant-Zuidoost\",", 
+"  \"6011\", \"GGD Limburg-Noord\",", "  \"6106\", \"GGD Zuid Limburg\",", 
+"  \"7014\", \"GGD Haaglanden\",", "  \"7206\", \"GGD Fryslan\",", 
+"  \"7306\", \"GGD Zaanstreek-Waterland\"", ")", "", "label_ggd <- function(x) {", 
+"  code <- as.character(x)", "  name <- ggd_lookup$ggd_name[match(code, ggd_lookup$ggd)]", 
+"  dplyr::case_when(", "    is.na(code) | code == \"\" ~ \"Unknown GGD\",", 
+"    !is.na(name) ~ paste0(name, \" (\", code, \")\"),", "    TRUE ~ paste0(\"GGD \", code)", 
+"  )", "}", "", "format_graph_number <- function(x, cost = FALSE, digits = 3, axis = FALSE) {", 
+"  values <- suppressWarnings(as.numeric(x))", "  out <- scales::comma(values, accuracy = 10^-digits)", 
+"  out[is.na(values)] <- \"NA\"", "  out", "}", "", "format_effect_ci <- function(effect, se, cost = FALSE) {", 
+"  effect <- suppressWarnings(as.numeric(effect))", "  se <- suppressWarnings(as.numeric(se))", 
+"  ci_low <- effect - 1.96 * se", "  ci_high <- effect + 1.96 * se", 
+"  paste0(", "    format_graph_number(effect, cost = cost),", 
+"    \" [\",", "    format_graph_number(ci_low, cost = cost),", 
+"    \", \",", "    format_graph_number(ci_high, cost = cost),", 
+"    \"]\"", "  )", "}", "", "write_download_xlsx <- function(df, file) {", 
+"  openxlsx::write.xlsx(df, file, asTable = FALSE, overwrite = TRUE)", 
+"}", "", "# Drop columns the dashboard added for display/tooltips and keep only the", 
+"# columns that existed in the original source sheet.", "trim_to_raw_columns <- function(df, raw_cols) {", 
+"  if (is.data.frame(raw_cols)) raw_cols <- names(raw_cols)", 
+"  dplyr::select(df, dplyr::any_of(raw_cols))", "}", "", "make_plot_download <- function(plot_fn, filename, width = 11, height = 7) {", 
+"  downloadHandler(", "    filename = function() filename,", 
+"    content = function(file) {", "      ggplot2::ggsave(file, plot = plot_fn(), width = width, height = height, dpi = 150, units = \"in\", bg = \"white\")", 
+"    },", "    contentType = \"image/png\"", "  )", "}", "", 
+"order_type_choices <- function(type_choices) {", "  type_choices <- sort(unique(type_choices))", 
+"  c(intersect(\"gemiddelde_per_persoon\", type_choices), setdiff(type_choices, \"gemiddelde_per_persoon\"))", 
+"}", "", "safe_file_stub <- function(x) {", "  x |>", "    as.character() |>", 
+"    paste(collapse = \"_\") |>", "    stringr::str_replace_all(\"[^A-Za-z0-9]+\", \"_\") |>", 
+"    stringr::str_replace_all(\"^_|_$\", \"\") |>", "    tolower()", 
+"}", "", "infer_dataset <- function(sheet_name) {", "  if (grepl(\"_es_group$\", sheet_name)) {", 
+"    sub(\"_es_group$\", \"\", sheet_name)", "  } else if (grepl(\"_es$\", sheet_name)) {", 
+"    sub(\"_es$\", \"\", sheet_name)", "  } else if (grepl(\"_mean_yr\", sheet_name)) {", 
+"    sub(\"_mean_yr.*$\", \"\", sheet_name)", "  } else if (grepl(\"_mean_2020_2023$\", sheet_name)) {", 
+"    sub(\"_mean_2020_2023$\", \"\", sheet_name)", "  } else if (grepl(\"_mean_2018_2023$\", sheet_name)) {", 
+"    sub(\"_mean_2018_2023$\", \"\", sheet_name)", "  } else if (grepl(\"_mean$\", sheet_name)) {", 
+"    sub(\"_mean$\", \"\", sheet_name)", "  } else if (grepl(\"_mean_\", sheet_name)) {", 
+"    # Grouped subgroup sheets, e.g. \"zorgkosten_mean_gesl\" -> \"zorgkosten\"", 
+"    sub(\"_mean_.*$\", \"\", sheet_name)", "  } else {", "    NA_character_", 
+"  }", "}", "", "detect_group_var <- function(cols, period_var) {", 
+"  base_cols <- c(period_var, \"has_hiv\", \"n_totaal\", \"variable\", \"value\", \"name\", \"type\")", 
+"  extra <- setdiff(cols, base_cols)", "  if (length(extra) == 0) {", 
+"    \"none\"", "  } else {", "    extra[[1]]", "  }", "}", "", 
+"parse_tree_sheet <- function(sheet_name) {", "  model_lookup <- c(", 
+"    n_n = \"No HIV stage, no diagnosis year\",", "    n_y = \"No HIV stage, with diagnosis year\",", 
+"    y_n = \"With HIV stage, no diagnosis year\",", "    y_y = \"With HIV stage, with diagnosis year\",", 
+"    stage = \"Stage prevalence tree\"", "  )", "", "  if (grepl(\"^tree_[ny]_[ny]_\", sheet_name)) {", 
+"    model_code <- sub(\"^tree_([ny]_[ny])_.*$\", \"\\\\1\", sheet_name)", 
+"    outcome <- sub(\"^tree_[ny]_[ny]_\", \"\", sheet_name)", 
+"    tree_type <- \"Cost tree\"", "  } else {", "    model_code <- \"stage\"", 
+"    outcome <- sub(\"^tree_\", \"\", sheet_name)", "    tree_type <- \"Stage tree\"", 
+"  }", "", "  outcome <- sub(\"inpatient_ou$\", \"inpatient_outpatient_art_total\", outcome)", 
+"", "  tibble::tibble(", "    sheet = sheet_name,", "    tree_type = tree_type,", 
+"    model_code = model_code,", "    model_label = unname(model_lookup[model_code]),", 
+"    outcome = outcome,", "    outcome_label = prettify_label(outcome)", 
+"  )", "}", "", "fix_split_label <- function(split_label, path_to_node) {", 
+"  split_label_chr <- as.character(split_label)", "  path_chr <- as.character(path_to_node)", 
+"  needs_fix <- stringr::str_detect(split_label_chr, \"[0-9]e[+-]?[0-9]\")", 
+"  last_segment <- stringr::str_trim(sub(\".*&\\\\s*\", \"\", path_chr))", 
+"  dplyr::if_else(", "    needs_fix & !is.na(path_chr) & nzchar(path_chr) & nzchar(last_segment),", 
+"    last_segment,", "    split_label_chr", "  )", "}", "", "wrap_for_label <- function(x, width = 22) {", 
+"  x |>", "    as.character() |>", "    stringr::str_replace_all(\"\\\\\\\\n\", \"\\n\") |>", 
+"    stringr::str_wrap(width = width)", "}", "", "format_prediction <- function(x) {", 
+"  ifelse(", "    is.na(x),", "    \"NA\",", "    ifelse(abs(x) <= 1, scales::percent(x, accuracy = 0.1), scales::comma(round(x, 1)))", 
+"  )", "}", "", "node_bits <- function(node_id) {", "  if (is.na(node_id) || node_id <= 1) {", 
+"    return(integer())", "  }", "", "  bits <- integer()", "  current <- as.integer(node_id)", 
+"  while (current > 1) {", "    bits <- c(current %% 2, bits)", 
+"    current <- floor(current / 2)", "  }", "  bits", "}", "", 
+"node_x_position <- function(node_id) {", "  bits <- node_bits(node_id)", 
+"  if (length(bits) == 0) {", "    return(0.5)", "  }", "", "  offsets <- ifelse(bits == 1, 1, -1) / (2 ^ ((seq_along(bits)) + 1))", 
+"  0.5 + sum(offsets)", "}", "", "cpi_cbs <- tibble::tibble(", 
+"  year = 2008:2024,", "  cpi = c(89.37, 90.44, 91.59, 93.73, 96.04, 98.44,", 
+"          99.40, 100.00, 100.32, 101.70, 103.44, 106.16,", "          107.51, 110.39, 121.43, 126.09, 130.31)", 
+")", "cpi_cbs <- cpi_cbs |>", "  dplyr::mutate(cpi = cpi / cpi[year == 2023])", 
+"", "cpi_nza <- tibble::tibble(", "  year = 2014:2023,", "  growth = c(3.14, 1.15, 0.26, 1.92, 2.87, 3.75, 1.74, 3.42, 2.38, 7.70)", 
+")", "cpi_nza <- cpi_nza |>", "  dplyr::mutate(f = 1 + growth / 100, cpi = NA_real_)", 
+"cpi_nza$cpi[cpi_nza$year == 2023] <- 100", "base_pos <- which(cpi_nza$year == 2023)", 
+"for (i in seq(base_pos, 2)) {", "  cpi_nza$cpi[i - 1] <- cpi_nza$cpi[i] / cpi_nza$f[i]", 
+"}", "cpi_nza <- cpi_nza |>", "  dplyr::transmute(year = year, cpi = cpi / 100) |>", 
+"  dplyr::bind_rows(tibble::tibble(year = 2024, cpi = 1.0591))", 
+"", "cost_cpi_dataset <- c(\"zorgkosten\", \"medicijn\", \"hepatitis_b_c\", \"atc_j\")", 
+"", "get_cpi_table <- function(dataset_name) {", "  if (dataset_name %in% cost_cpi_dataset) {", 
+"    cpi_nza", "  } else {", "    cpi_cbs", "  }", "}", "", "plot_legend_layout <- function(p) {", 
+"  plotly::layout(", "    p,", "    legend = list(", "      orientation = \"h\",", 
+"      x = 0.5,", "      xanchor = \"center\",", "      y = -0.2,", 
+"      yanchor = \"top\",", "      title = list(text = \"\"),", 
+"      font = list(size = 11)", "    ),", "    margin = list(r = 30, b = 140)", 
+"  )", "}", "", "hiv_linetype_values <- c(", "  \"People with HIV\" = \"solid\",", 
+"  \"Matched controls / no HIV\" = \"dashed\"", ")", "", "group_color_master_palette <- c(", 
+"  \"#0072B2\", \"#D55E00\", \"#009E73\", \"#CC79A7\", \"#E69F00\",", 
+"  \"#56B4E9\", \"#F0E442\", \"#000000\", \"#332288\", \"#88CCEE\",", 
+"  \"#44AA99\", \"#117733\", \"#999933\", \"#DDCC77\", \"#CC6677\",", 
+"  \"#882255\", \"#AA4499\", \"#661100\", \"#6699CC\", \"#AA4466\",", 
+"  \"#4477AA\", \"#EE6677\", \"#228833\", \"#CCBB44\", \"#66CCEE\",", 
+"  \"#AA3377\", \"#BBBBBB\"", ")", "", "# Simple deterministic string hash (content-addressable), so a group label", 
+"# always maps to the same palette color regardless of which other groups", 
+"# happen to be visible at the same time (i.e. consistent across tabs/filters).", 
+"string_hash <- function(x) {", "  codes <- utf8ToInt(enc2utf8(x))", 
+"  h <- 0", "  for (code in codes) {", "    h <- (h * 31 + code) %% 1000003", 
+"  }", "  h", "}", "", "color_for_group <- function(label) {", 
+"  if (identical(label, \"All\") || identical(label, \"Total\")) {", 
+"    return(group_color_master_palette[[1]])", "  }", "  idx <- (string_hash(label) %% length(group_color_master_palette)) + 1", 
+"  group_color_master_palette[[idx]]", "}", "", "build_group_color_palette <- function(values) {", 
+"  values <- unique(as.character(values))", "  values_ordered <- sort(values)", 
+"  cols <- rep(group_color_master_palette, length.out = length(values_ordered))", 
+"  stats::setNames(cols[match(values, values_ordered)], values)", 
+"}", "", "is_zorgkosten_dataset <- function(dataset_label) {", 
+"  identical(stringr::str_to_lower(as.character(dataset_label)), \"zorgkosten\")", 
+"}", "", "is_atc_j_dataset <- function(dataset_label) {", "  identical(stringr::str_to_lower(as.character(dataset_label)), \"atc j\")", 
+"}", "", "new_old_cost_view_config <- list(", "  hiv_care = list(", 
+"    label = \"HIV care\",", "    title = \"Costs for HIV care\",", 
+"    names = c(\"costs_medicine_art\", \"costs_hiv_outpatient\", \"costs_hiv_inpatient\")", 
+"  ),", "  hiv_and_non_hiv = list(", "    label = \"HIV and non-HIV care\",", 
+"    title = \"Costs for HIV and non-HIV care\",", "    names = c(", 
+"      \"costs_medicine_art\",", "      \"costs_hiv_outpatient\",", 
+"      \"costs_hiv_inpatient\",", "      \"costs_not_hiv_inpatient_outpatient_art\"", 
+"    )", "  ),", "  hiv_care_split = list(", "    label = \"HIV care, split by ART cost band\",", 
+"    title = \"Costs for HIV care, split by type\",", "    names = c(", 
+"      \"costs_medicine_art_below_1500\",", "      \"costs_medicine_art_1500_3000\",", 
+"      \"costs_medicine_art_3000_6000\",", "      \"costs_medicine_art_6000_9000\",", 
+"      \"costs_medicine_art_above_9000\",", "      \"costs_hiv_inpatient\",", 
+"      \"costs_hiv_outpatient\"", "    )", "  )", ")", "", "new_old_cost_name_levels <- rev(c(", 
+"  \"costs_medicine_art\",", "  \"costs_medicine_art_below_1500\",", 
+"  \"costs_medicine_art_1500_3000\",", "  \"costs_medicine_art_3000_6000\",", 
+"  \"costs_medicine_art_6000_9000\",", "  \"costs_medicine_art_above_9000\",", 
+"  \"costs_hiv_outpatient\",", "  \"costs_hiv_inpatient\",", 
+"  \"costs_medicine_non_art\",", "  \"costs_est_hepatitis\",", 
+"  \"costs_not_hiv_inpatient_outpatient_art\"", "))", "", "# Cleans up ggplotly's auto-generated legend so there is exactly one entry", 
+"# per unique color/linetype combination, instead of one per underlying trace", 
+"# (which otherwise repeats \"People with HIV\" / \"Controls\" once per group).", 
+"make_line_only_legend <- function(plot_obj) {", "  traces <- plot_obj$x$data %||% list()", 
+"  if (length(traces) == 0) {", "    return(plot_obj)", "  }", 
+"", "  normalize_legend_label <- function(label) {", "    if (is.null(label) || !nzchar(label)) {", 
+"      return(label)", "    }", "    label <- as.character(label)", 
+"    if (grepl(\"^\\\\(.*\\\\)$\", label)) {", "      label <- sub(\"^\\\\((.*)\\\\)$\", \"\\\\1\", label)", 
+"    }", "    label <- gsub(\",\", \", \", label, fixed = TRUE)", 
+"    label <- gsub(\"\\\\s+\", \" \", label)", "    stringr::str_trim(label)", 
+"  }", "", "  normalize_trace <- function(trace) {", "    trace$name <- normalize_legend_label(trace$name %||% \"\")", 
+"    if (!is.null(trace$legendgroup) && nzchar(trace$legendgroup)) {", 
+"      trace$legendgroup <- normalize_legend_label(trace$legendgroup)", 
+"    }", "    if ((is.null(trace$legendgroup) || !nzchar(trace$legendgroup)) &&", 
+"        !is.null(trace$name) && nzchar(trace$name)) {", "      trace$legendgroup <- trace$name", 
+"    }", "    trace", "  }", "", "  plot_obj$x$data <- lapply(traces, normalize_trace)", 
+"", "  legend_traces <- Filter(function(trace) {", "    mode <- trace$mode %||% \"\"", 
+"    !is.null(trace$name) &&", "      nzchar(trace$name) &&", 
+"      (grepl(\"lines\", mode) || !is.null(trace$line))", "  }, plot_obj$x$data)", 
+"", "  if (length(legend_traces) == 0) {", "    return(plot_obj)", 
+"  }", "", "  legend_keys <- vapply(legend_traces, function(trace) {", 
+"    paste(", "      trace$name %||% \"\",", "      trace$line$color %||% trace$marker$color %||% \"\",", 
+"      trace$line$dash %||% \"solid\",", "      sep = \"||\"", 
+"    )", "  }, character(1))", "  legend_traces <- legend_traces[!duplicated(legend_keys)]", 
+"", "  plot_obj$x$data <- lapply(plot_obj$x$data, function(trace) {", 
+"    trace$showlegend <- FALSE", "    trace", "  })", "", "  for (trace in legend_traces) {", 
+"    plot_obj <- plotly::add_trace(", "      plot_obj,", "      x = 0,", 
+"      y = 0,", "      type = \"scatter\",", "      mode = \"lines\",", 
+"      visible = \"legendonly\",", "      hoverinfo = \"skip\",", 
+"      showlegend = TRUE,", "      name = trace$name,", "      legendgroup = trace$legendgroup %||% trace$name,", 
+"      line = list(", "        color = trace$line$color %||% trace$marker$color %||% \"#4b5563\",", 
+"        dash = trace$line$dash %||% \"solid\",", "        width = trace$line$width %||% 2", 
+"      ),", "      inherit = FALSE", "    )", "  }", "", "  plot_obj", 
+"}", "", "escape_dot_label <- function(x) {", "  x |>", "    as.character() |>", 
+"    stringr::str_replace_all(\"\\\\\\\\\", \"\\\\\\\\\\\\\\\\\") |>", 
+"    stringr::str_replace_all(\"\\\"\", \"\\\\\\\\\\\"\") |>", 
+"    stringr::str_replace_all(\"\\n\", \"\\\\\\\\n\")", "}", 
+"", "tree_fill_colors <- function(x) {", "  values <- suppressWarnings(as.numeric(x))", 
+"  if (length(values) == 0 || all(is.na(values))) {", "    return(rep(\"#dbeafe\", length(x)))", 
+"  }", "", "  rng <- range(values, na.rm = TRUE)", "  if (isTRUE(all.equal(rng[1], rng[2]))) {", 
+"    return(rep(\"#93c5fd\", length(values)))", "  }", "", "  pal <- scales::col_numeric(c(\"#dbeafe\", \"#60a5fa\", \"#2563eb\"), domain = rng)", 
+"  cols <- pal(values)", "  cols[is.na(cols)] <- \"#dbeafe\"", 
+"  cols", "}", "", "build_tree_grviz <- function(export_table, prevalentie = TRUE, cost_tree = FALSE) {", 
+"  if (nrow(export_table) == 0) {", "    stop(\"Tree table is empty.\")", 
+"  }", "", "  percentage_vec <- if (\"percentage\" %in% names(export_table)) {", 
+"    as.numeric(export_table$percentage)", "  } else {", "    as.numeric(export_table$total_n) / max(as.numeric(export_table$total_n), na.rm = TRUE)", 
+"  }", "", "  prediction_label <- if (isTRUE(prevalentie)) {", 
+"    paste0(\"Prevalence x1000 = \", round(as.numeric(export_table$predicted_class), 2) * 1000)", 
+"  } else if (isTRUE(cost_tree)) {", "    paste0(\"Predicted cost = \342\202\254\", format_graph_number(export_table$predicted_class, cost = TRUE))", 
+"  } else {", "    paste0(\"Predicted value = \", scales::comma(round(as.numeric(export_table$predicted_class), 2)))", 
+"  }", "", "  export_table <- export_table |>", "    dplyr::mutate(", 
+"      percentage = percentage_vec,", "      split_label_wrapped = dplyr::if_else(split_label == \"root\", \"Root\", wrap_for_label(split_label, width = 18)),", 
+"      prediction_label = prediction_label,", "      n_label = paste0(", 
+"        \"n = \", scales::comma(as.numeric(total_n)),", "        \" (\", round(percentage * 100, 1), \"%)\"", 
+"      ),", "      node_label = paste(split_label_wrapped, prediction_label, n_label, sep = \"\\n\"),", 
+"      node_label = escape_dot_label(node_label),", "      fill_col = tree_fill_colors(predicted_class)", 
+"    )", "", "  ids <- as.integer(export_table$node)", "", "  node_defs <- paste0(", 
+"    \"node\", ids,", "    ' [label=\"', export_table$node_label,", 
+"    '\", shape=box, style=\"filled,rounded\", fillcolor=\"', export_table$fill_col,", 
+"    '\", color=\"#94a3b8\", fontcolor=\"#111827\", penwidth=1];'", 
+"  )", "", "  edges <- character()", "  for (i in ids) {", "    left <- i * 2L", 
+"    right <- i * 2L + 1L", "    if (left %in% ids) {", "      edges <- c(edges, paste0('node', i, ' -> node', left, ' [color=\"#94a3b8\", arrowsize=0.8];'))", 
+"    }", "    if (right %in% ids) {", "      edges <- c(edges, paste0('node', i, ' -> node', right, ' [color=\"#94a3b8\", arrowsize=0.8];'))", 
+"    }", "  }", "", "  DiagrammeR::grViz(sprintf(", "    \"", 
+"    digraph rpart_tree {", "      graph [layout = dot, rankdir = TB, fontsize = 14, nodesep = 0.35, ranksep = 1.0, splines = line]", 
+"      node [fontname = Arial, fontsize = 14, width = 0.2, height = 0.5, margin = 0.15, fixedsize = false]", 
+"      edge [fontname = Arial]", "      %s", "      %s", "    }", 
+"    \",", "    paste(node_defs, collapse = \"\\n\"),", "    paste(edges, collapse = \"\\n\")", 
+"  ))", "}", "", "sheet_catalog <- purrr::imap_dfr(iteration3_files, function(path, file_key) {", 
+"  purrr::map_dfr(safe_excel_sheets(path), function(sheet_name) {", 
+"    df <- safe_read_sheet(path, sheet_name)", "    tibble::tibble(", 
+"      file_key = file_key,", "      file_path = path,", "      sheet = sheet_name,", 
+"      dataset = infer_dataset(sheet_name),", "      n_rows = nrow(df),", 
+"      cols = list(names(df)),", "      has_value = all(c(\"value\", \"variable\", \"type\", \"name\") %in% names(df)),", 
+"      has_es = all(c(\"outcome\", \"coef\", \"lo\", \"hi\", \"years_since_diagnosis\") %in% names(df)),", 
+"      has_es_group = all(c(\"outcome\", \"factor\", \"group\", \"coef\", \"lo\", \"hi\", \"years_since_diagnosis\") %in% names(df)),", 
+"      is_tree = all(c(\"node\", \"level\", \"split_label\", \"total_n\", \"predicted_class\") %in% names(df))", 
+"    )", "  })", "})", "", "is_hidden_dataset_label <- function(x) {", 
+"  rep(FALSE, length(x))", "}", "", "visible_outcome_choices <- function(values, dataset_label) {", 
+"  sort(unique(as.character(values)))", "}", "", "dataset_display_order <- c(", 
+"  \"zorgkosten\",", "  \"income\",", "  \"wlz\",", "  \"support\",", 
+"  \"medicijn\",", "  \"hepatitis b c\",", "  \"hiv care dbc\",", 
+"  \"atc j\"", ")", "", "order_dataset_choices <- function(values) {", 
+"  values <- unique(as.character(values))", "  normalized <- stringr::str_to_lower(values)", 
+"  rank <- match(normalized, dataset_display_order)", "  rank[is.na(rank)] <- length(dataset_display_order) + match(values[is.na(rank)], sort(values[is.na(rank)]))", 
+"  values[order(rank, values)]", "}", "", "counts_index <- purrr::map_dfr(", 
+"  safe_excel_sheets(iteration3_files[[\"counts\"]]),", "  function(sheet_name) {", 
+"    if (!stringr::str_detect(sheet_name, \"_n_yr_(diag|cal|all)$\")) {", 
+"      return(tibble::tibble())", "    }", "", "    df <- safe_read_sheet(iteration3_files[[\"counts\"]], sheet_name)", 
+"    value_cols <- setdiff(names(df), c(\"year\", \"has_hiv\", \"cohort\", \"N\", \"share\"))", 
+"    if (length(value_cols) != 1) {", "      log_msg(sprintf(\"[counts_index] Skipping %s because it has %d category columns\", sheet_name, length(value_cols)))", 
+"      return(tibble::tibble())", "    }", "", "    view_code <- sub(\"^.*_n_yr_\", \"\", sheet_name)", 
+"    value_col <- value_cols[[1]]", "", "    tibble::tibble(", 
+"      sheet = sheet_name,", "      count_variable = value_col,", 
+"      view_code = view_code,", "      view_label = dplyr::recode(", 
+"        view_code,", "        diag = \"Diagnosis year\",", "        cal = \"Calendar year (HIV cohorts)\",", 
+"        all = \"Calendar year (HIV vs no HIV)\"", "      ),", 
+"      variable_label = prettify_factor(value_col)", "    )", 
+"  }", ")", "", "descriptive_mean_index <- sheet_catalog |>", 
+"  dplyr::filter(file_key == \"descriptives\", has_value, stringr::str_detect(sheet, \"_mean_yr\"), !stringr::str_detect(sheet, \"costs_new_old\")) |>", 
+"  dplyr::mutate(", "    dataset_label = prettify_label(dataset),", 
+"    group_var = purrr::map_chr(cols, detect_group_var, period_var = \"year\"),", 
+"    group_label = dplyr::if_else(group_var == \"none\", \"Total\", prettify_factor(group_var))", 
+"  ) |>", "  dplyr::filter(!is_hidden_dataset_label(dataset_label))", 
+"", "event_mean_index <- sheet_catalog |>", "  dplyr::filter(", 
+"    file_key == \"event_study\",", "    has_value,", "    stringr::str_detect(sheet, \"_mean($|_)\"),", 
+"    !stringr::str_detect(sheet, \"_mean_yr\"),", "    !stringr::str_detect(sheet, \"_mean_2018_2023$\"),", 
+"    !stringr::str_detect(sheet, \"_mean_2020_2023$\")", "  ) |>", 
+"  dplyr::mutate(", "    dataset_label = prettify_label(dataset),", 
+"    group_var = purrr::map_chr(cols, detect_group_var, period_var = \"years_since_diagnosis\"),", 
+"    group_label = dplyr::if_else(group_var == \"none\", \"Total\", prettify_factor(group_var))", 
+"  ) |>", "  dplyr::filter(!is_hidden_dataset_label(dataset_label))", 
+"", "es_index <- sheet_catalog |>", "  dplyr::filter(file_key == \"event_study\", has_es, !has_es_group) |>", 
+"  dplyr::mutate(dataset_label = prettify_label(dataset)) |>", 
+"  dplyr::filter(!is_hidden_dataset_label(dataset_label))", "", 
+"es_group_index <- sheet_catalog |>", "  dplyr::filter(file_key == \"event_study\", has_es_group) |>", 
+"  dplyr::mutate(dataset_label = prettify_label(dataset)) |>", 
+"  dplyr::filter(!is_hidden_dataset_label(dataset_label))", "", 
+"tree_index <- purrr::map_dfr(", "  sheet_catalog$sheet[sheet_catalog$file_key == \"trees\"],", 
+"  parse_tree_sheet", ")", "", "tree_prevalence_index <- tree_index |>", 
+"  dplyr::filter(tree_type == \"Stage tree\")", "", "tree_cost_index <- tree_index |>", 
+"  dplyr::filter(tree_type == \"Cost tree\")", "", "tree_cost_model_lookup <- c(", 
+"  n_n = \"No HIV stage, no diagnosis year\",", "  n_y = \"No HIV stage, with diagnosis year\",", 
+"  y_n = \"With HIV stage, no diagnosis year\",", "  y_y = \"With HIV stage, with diagnosis year\"", 
+")", "", "cache_env <- new.env(parent = emptyenv())", "get_sheet <- function(file_key, sheet_name) {", 
+"  req(file_key, sheet_name)", "  key <- paste(file_key, sheet_name, sep = \"::\")", 
+"  if (!exists(key, envir = cache_env, inherits = FALSE)) {", 
+"    df <- safe_read_sheet(iteration3_files[[file_key]], sheet_name)", 
+"    assign(key, df, envir = cache_env)", "    log_msg(sprintf(\"[cache] Loaded %s / %s (%d rows)\", file_key, sheet_name, nrow(df)))", 
+"  }", "  get(key, envir = cache_env, inherits = FALSE)", "}", 
+"", "ui <- navbarPage(", "  title = \"HIV Iteration 3 Dashboard\",", 
+"  id = \"main_nav\",", "  header = tags$div(", "    style = \"padding: 12px 18px 4px 18px; color: #4b5563; font-size: 14px;\",", 
+"    \"Iteration 3 results dashboard: counts, calendar-year descriptives, event studies, and tree outputs.\"", 
+"  ),", "", "  tabPanel(", "    \"Prevalence\",", "    fluidPage(", 
+"      br(),", "      fluidRow(", "        column(", "          12,", 
+"          h4(\"New diagnoses\"),", "          plotlyOutput(\"plot_prevalence\", height = \"420px\"),", 
+"          downloadButton(\"dl_prevalence\", \"Download data\"),", 
+"          downloadButton(\"dl_prevalence_plot\", \"Download graph\")", 
+"        )", "      ),", "      br(),", "      fluidRow(", "        column(", 
+"          12,", "          h4(\"HIV stage at diagnosis\"),", 
+"          plotlyOutput(\"plot_infectious_status\", height = \"420px\"),", 
+"          downloadButton(\"dl_infectious_status\", \"Download data\"),", 
+"          downloadButton(\"dl_infectious_status_plot\", \"Download graph\")", 
+"        )", "      )", "    )", "  ),", "", "  tabPanel(", "    \"Diagnosis Costs\",", 
+"    fluidPage(", "      br(),", "      fluidRow(", "        column(", 
+"          3,", "          selectInput(", "            \"new_old_cost_view\",", 
+"            \"Cost view\",", "            choices = stats::setNames(", 
+"              names(new_old_cost_view_config),", "              purrr::map_chr(new_old_cost_view_config, \"label\")", 
+"            ),", "            selected = \"hiv_care\"", "          )", 
+"        ),", "        column(", "          3,", "          checkboxInput(\"new_old_adjust_inflation\", \"Adjust costs to 2023 EUR using CPI\", value = TRUE)", 
+"        ),", "        column(", "          6,", "          tags$div(", 
+"            style = \"padding-top:25px;\",", "            downloadButton(\"dl_new_old_costs\", \"Download data\"),", 
+"            downloadButton(\"dl_new_old_costs_plot\", \"Download graph\")", 
+"          )", "        )", "      ),", "      fluidRow(", "        column(", 
+"          12,", "          h4(\"Costs by new and existing diagnoses\"),", 
+"          plotlyOutput(\"plot_new_old_costs\", height = \"720px\")", 
+"        )", "      )", "    )", "  ),", "", "  tabPanel(", "    \"ART Costs\",", 
+"    fluidPage(", "      br(),", "      fluidRow(", "        column(", 
+"          12,", "          h4(\"ART cost distribution\"),", 
+"          plotlyOutput(\"plot_art_distribution\", height = \"1400px\"),", 
+"          downloadButton(\"dl_art_distribution\", \"Download data\"),", 
+"          downloadButton(\"dl_art_distribution_plot\", \"Download graph\")", 
+"        )", "      )", "    )", "  ),", "", "  tabPanel(", "    \"Counts\",", 
+"    sidebarLayout(", "      sidebarPanel(", "        selectInput(\"count_variable\", \"Category\", choices = NULL),", 
+"        selectInput(\"count_view\", \"View\", choices = NULL),", 
+"        downloadButton(\"dl_counts\", \"Download data\"),", 
+"        downloadButton(\"dl_counts_plot\", \"Download graph\")", 
+"      ),", "      mainPanel(", "        plotlyOutput(\"plot_counts\", height = \"700px\")", 
+"      )", "    )", "  ),", "", "  tabPanel(", "    \"Calendar Means\",", 
+"    sidebarLayout(", "      sidebarPanel(", "        selectInput(\"dmean_dataset\", \"Dataset\", choices = NULL),", 
+"        selectInput(\"dmean_group_var\", \"Split by\", choices = NULL),", 
+"        uiOutput(\"dmean_variable_ui\"),", "        selectInput(\"dmean_type\", \"Statistic type\", choices = NULL),", 
+"        uiOutput(\"dmean_inflation_ui\"),", "        uiOutput(\"dmean_group_filter_ui\"),", 
+"        checkboxInput(\"dmean_include_zero\", \"Include 0 on y-axis\", value = TRUE),", 
+"        downloadButton(\"dl_dmean\", \"Download data\"),", "        downloadButton(\"dl_dmean_plot\", \"Download graph\")", 
+"      ),", "      mainPanel(", "        plotlyOutput(\"plot_dmean\", height = \"680px\")", 
+"      )", "    )", "  ),", "", "  tabPanel(", "    \"Event Study\",", 
+"    fluidPage(", "      tabsetPanel(", "        tabPanel(", 
+"          \"Observed means\",", "          sidebarLayout(", 
+"            sidebarPanel(", "              selectInput(\"emean_dataset\", \"Dataset\", choices = NULL),", 
+"              selectInput(\"emean_group_var\", \"Split by\", choices = NULL),", 
+"              uiOutput(\"emean_cohort_ui\"),", "              uiOutput(\"emean_variable_ui\"),", 
+"              selectInput(\"emean_type\", \"Statistic type\", choices = NULL),", 
+"              uiOutput(\"emean_inflation_ui\"),", "              uiOutput(\"emean_group_filter_ui\"),", 
+"              checkboxInput(\"emean_include_zero\", \"Include 0 on y-axis\", value = TRUE),", 
+"              downloadButton(\"dl_emean\", \"Download data\"),", 
+"              downloadButton(\"dl_emean_plot\", \"Download graph\")", 
+"            ),", "            mainPanel(", "              plotlyOutput(\"plot_emean\", height = \"680px\")", 
+"            )", "          )", "        ),", "        tabPanel(", 
+"          \"Estimated effects\",", "          sidebarLayout(", 
+"            sidebarPanel(", "              selectInput(\"es_dataset\", \"Dataset\", choices = NULL),", 
+"              selectInput(\"es_factor\", \"Split by\", choices = NULL),", 
+"              selectInput(\"es_outcome\", \"Outcome\", choices = NULL),", 
+"              uiOutput(\"es_cohort_ui\"),", "              uiOutput(\"es_inflation_ui\"),", 
+"              uiOutput(\"es_group_filter_ui\"),", "              downloadButton(\"dl_es\", \"Download data\"),", 
+"              downloadButton(\"dl_es_plot\", \"Download graph\")", 
+"            ),", "            mainPanel(", "              uiOutput(\"es_avg_effect\"),", 
+"              plotlyOutput(\"plot_es\", height = \"660px\")", 
+"            )", "          )", "        )", "      )", "    )", 
+"  ),", "", "  tabPanel(", "    \"Trees\",", "    fluidPage(", 
+"      br(),", "      wellPanel(", "        fluidRow(", "          column(", 
+"            3,", "            selectInput(", "              \"tree_type\",", 
+"              \"Tree type\",", "              choices = c(\"Stage tree\" = \"Stage tree\", \"Cost tree\" = \"Cost tree\"),", 
+"              selected = \"Stage tree\"", "            )", "          ),", 
+"          column(3, uiOutput(\"tree_model_ui\")),", "          column(3, selectInput(\"tree_outcome\", \"Outcome\", choices = NULL)),", 
+"          column(", "            3,", "            tags$label(\"Download\", style = \"display:block;\"),", 
+"            downloadButton(\"dl_tree\", \"Download data\"),", 
+"            downloadButton(\"dl_tree_plot\", \"Download graph\")", 
+"          )", "        )", "      ),", "      fluidRow(", "        column(", 
+"          12,", "          DiagrammeR::grVizOutput(\"plot_tree\", height = \"1200px\")", 
+"        )", "      )", "    )", "  )", ")", "", "server <- function(input, output, session) {", 
+"  prevalence_df <- reactive({", "    get_sheet(\"counts\", \"prevalence\")", 
+"  })", "", "  infectious_status_df <- reactive({", "    get_sheet(\"counts\", \"infectious_status\")", 
+"  })", "", "  art_distribution_df <- reactive({", "    get_sheet(\"descriptives\", \"distribition_art_costs\")", 
+"  })", "", "  new_old_costs_raw <- reactive({", "    get_sheet(\"descriptives\", \"costs_new_old_diagnoses_yr\")", 
+"  })", "", "  prevalence_plot_obj <- reactive({", "    df <- prevalence_df() |>", 
+"      dplyr::mutate(year_of_diagnosis = as.numeric(year_of_diagnosis))", 
+"    req(nrow(df) > 0)", "", "    ggplot(", "      df,", "      aes(", 
+"        x = year_of_diagnosis,", "        y = newly_diagnosed,", 
+"        text = paste0(", "          \"Year: \", year_of_diagnosis, \"<br>\",", 
+"          \"New diagnoses: \", scales::comma(newly_diagnosed)", 
+"        )", "      )", "    ) +", "      geom_line(color = \"steelblue4\", linewidth = 1) +", 
+"      geom_point(color = \"steelblue4\", size = 2) +", "      scale_x_continuous(breaks = sort(unique(df$year_of_diagnosis))) +", 
+"      theme_classic(base_size = 13) +", "      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +", 
+"      labs(x = \"Year of diagnosis\", y = \"New diagnoses\")", 
+"  })", "", "  output$plot_prevalence <- renderPlotly({", "    plot_legend_layout(plotly::ggplotly(prevalence_plot_obj(), tooltip = \"text\"))", 
+"  })", "", "  output$tbl_prevalence <- renderDT({", "    DT::datatable(prevalence_df(), options = list(pageLength = 10, scrollX = TRUE))", 
+"  })", "", "  infectious_status_plot_obj <- reactive({", "    df <- infectious_status_df() |>", 
+"      dplyr::mutate(year_of_diagnosis = as.numeric(year_of_diagnosis))", 
+"    req(nrow(df) > 0)", "", "    ggplot(", "      df,", "      aes(", 
+"        x = year_of_diagnosis,", "        y = share,", "        fill = hiv_stage,", 
+"        text = paste0(", "          \"Year: \", year_of_diagnosis, \"<br>\",", 
+"          \"Stage: \", hiv_stage, \"<br>\",", "          \"Share: \", scales::percent(share, accuracy = 0.1), \"<br>\",", 
+"          \"N: \", scales::comma(N)", "        )", "      )", 
+"    ) +", "      geom_col(position = \"fill\") +", "      scale_x_continuous(breaks = sort(unique(df$year_of_diagnosis))) +", 
+"      scale_y_continuous(labels = scales::percent) +", "      theme_classic(base_size = 13) +", 
+"      theme(legend.position = \"bottom\", axis.text.x = element_text(angle = 45, hjust = 1)) +", 
+"      labs(x = \"Year of diagnosis\", y = \"Share\", fill = NULL)", 
+"  })", "", "  output$plot_infectious_status <- renderPlotly({", 
+"    plot_legend_layout(plotly::ggplotly(infectious_status_plot_obj(), tooltip = \"text\"))", 
+"  })", "", "  output$tbl_infectious_status <- renderDT({", "    DT::datatable(infectious_status_df(), options = list(pageLength = 10, scrollX = TRUE))", 
+"  })", "", "  art_distribution_plot_obj <- reactive({", "    df <- art_distribution_df() |>", 
+"      dplyr::mutate(", "        year = as.factor(year),", "        tooltip = paste0(", 
+"          \"Year: \", year, \"<br>\",", "          \"Midpoint: \", format_graph_number(bin_mid, cost = TRUE), \"<br>\",", 
+"          \"Count: \", scales::comma(n_total)", "        )", 
+"      )", "    req(nrow(df) > 0)", "", "    ggplot(", "      df,", 
+"      aes(", "        xmin = bin_start,", "        xmax = bin_end,", 
+"        ymin = 0,", "        ymax = n_total,", "        text = tooltip", 
+"      )", "    ) +", "      geom_rect(fill = \"steelblue3\", color = \"white\") +", 
+"      facet_wrap(~year, scales = \"free_y\", ncol = 1) +", "      scale_x_continuous(labels = function(x) format_graph_number(x, cost = TRUE, axis = TRUE)) +", 
+"      theme_classic(base_size = 12) +", "      theme(legend.position = \"bottom\") +", 
+"      labs(x = \"Estimated ART costs\", y = \"Count\")", "  })", 
+"", "  output$plot_art_distribution <- renderPlotly({", "    plot_legend_layout(plotly::ggplotly(art_distribution_plot_obj(), tooltip = \"text\"))", 
+"  })", "", "  output$tbl_art_distribution <- renderDT({", "    DT::datatable(art_distribution_df(), options = list(pageLength = 10, scrollX = TRUE))", 
+"  })", "", "  new_old_costs_data <- reactive({", "    req(input$new_old_cost_view)", 
+"    cfg <- new_old_cost_view_config[[input$new_old_cost_view]]", 
+"    req(!is.null(cfg))", "", "    df <- new_old_costs_raw()", 
+"    req(nrow(df) > 0)", "    name_levels <- intersect(new_old_cost_name_levels, cfg$names)", 
+"", "    df |>", "      dplyr::filter(type == \"sum_totaal_groep\", name %in% cfg$names) |>", 
+"      dplyr::arrange(new_diagnosis, name, year) |>", "      dplyr::mutate(", 
+"        year = as.numeric(year),", "        new_diagnosis = factor(", 
+"          as.character(new_diagnosis),", "          levels = intersect(c(\"All\", \"Old\", \"New\"), unique(as.character(new_diagnosis)))", 
+"        ),", "        name_factor = factor(as.character(name), levels = name_levels),", 
+"        pretty_variable = prettify_label(name),", "        value_nominal = as.numeric(value)", 
+"      ) |>", "      dplyr::left_join(cpi_nza, by = \"year\") |>", 
+"      dplyr::mutate(", "        value_plot = dplyr::if_else(", 
+"          (is.null(input$new_old_adjust_inflation) | isTRUE(input$new_old_adjust_inflation)) & !is.na(cpi) & cpi > 0,", 
+"          value_nominal / cpi,", "          value_nominal", 
+"        ),", "        value_mln = value_plot / 1000000,", "        value_label = format_graph_number(value_mln, cost = TRUE),", 
+"        tooltip = paste0(", "          \"Type: \", pretty_variable, \"<br>\",", 
+"          \"Diagnosis group: \", new_diagnosis, \"<br>\",", 
+"          \"Year: \", year, \"<br>\",", "          \"Value: \", value_label, \" mln EUR\"", 
+"        )", "      )", "  })", "", "  new_old_costs_plot_obj <- reactive({", 
+"    df <- new_old_costs_data()", "    req(nrow(df) > 0)", "    cfg <- new_old_cost_view_config[[input$new_old_cost_view]]", 
+"    fill_values <- as.character(stats::na.omit(levels(droplevels(df$name_factor))))", 
+"    req(length(fill_values) > 0)", "    fill_palette <- build_group_color_palette(fill_values)", 
+"    fill_labels <- stats::setNames(prettify_label(fill_values), fill_values)", 
+"", "    ggplot(", "      df,", "      aes(", "        x = year,", 
+"        y = value_mln,", "        fill = name_factor,", "        group = name_factor,", 
+"        text = tooltip", "      )", "    ) +", "      geom_area(alpha = 0.85) +", 
+"      facet_wrap(~new_diagnosis, scales = \"free_y\") +", "      scale_fill_manual(values = fill_palette, breaks = fill_values, limits = fill_values, labels = fill_labels, drop = FALSE) +", 
+"      scale_x_continuous(breaks = sort(unique(df$year))) +", 
+"      scale_y_continuous(labels = function(x) format_graph_number(x, cost = TRUE, axis = TRUE)) +", 
+"      theme_classic(base_size = 13) +", "      theme(", "        legend.position = \"bottom\",", 
+"        axis.text.x = element_text(angle = 45, hjust = 1)", 
+"      ) +", "      labs(", "        title = cfg$title,", "        x = \"Year\",", 
+"        y = \"Mln EUR\",", "        fill = NULL", "      )", 
+"  })", "", "  output$plot_new_old_costs <- renderPlotly({", 
+"    plot_legend_layout(plotly::ggplotly(new_old_costs_plot_obj(), tooltip = \"text\"))", 
+"  })", "", "  observe({", "    count_choices <- counts_index |>", 
+"      dplyr::distinct(count_variable, variable_label) |>", "      dplyr::arrange(variable_label)", 
+"    updateSelectInput(", "      session,", "      \"count_variable\",", 
+"      choices = stats::setNames(count_choices$count_variable, count_choices$variable_label),", 
+"      selected = count_choices$count_variable[[1]]", "    )", 
+"  })", "", "  observe({", "    req(input$count_variable)", "    view_choices <- counts_index |>", 
+"      dplyr::filter(count_variable == input$count_variable) |>", 
+"      dplyr::distinct(view_code, view_label)", "    updateSelectInput(", 
+"      session,", "      \"count_view\",", "      choices = stats::setNames(view_choices$view_code, view_choices$view_label),", 
+"      selected = view_choices$view_code[[1]]", "    )", "  })", 
+"", "  counts_sheet_selected <- reactive({", "    req(input$count_variable, input$count_view)", 
+"    row <- counts_index |>", "      dplyr::filter(count_variable == input$count_variable, view_code == input$count_view) |>", 
+"      dplyr::slice(1)", "    req(nrow(row) == 1)", "    row", 
+"  })", "", "  counts_data_raw <- reactive({", "    row <- counts_sheet_selected()", 
+"    get_sheet(\"counts\", row$sheet[[1]])", "  })", "", "  counts_data <- reactive({", 
+"    df <- counts_data_raw()", "    value_cols <- setdiff(names(df), c(\"year\", \"has_hiv\", \"cohort\", \"N\", \"share\"))", 
+"    req(length(value_cols) == 1)", "    value_col <- value_cols[[1]]", 
+"", "    population_label <- if (\"has_hiv\" %in% names(df)) {", 
+"      prettify_hiv(df$has_hiv)", "    } else if (\"cohort\" %in% names(df)) {", 
+"      as.character(df$cohort)", "    } else {", "      rep(\"All\", nrow(df))", 
+"    }", "", "    df |>", "      dplyr::mutate(", "        year = as.numeric(year),", 
+"        level_raw = as.character(.data[[value_col]]),", "        level = if (identical(value_col, \"ggd\")) label_ggd(level_raw) else level_raw,", 
+"        population_label = population_label,", "        tooltip = paste0(", 
+"          prettify_factor(value_col), \": \", level, \"<br>\",", 
+"          \"Population: \", population_label, \"<br>\",", "          \"Year: \", year, \"<br>\",", 
+"          \"Share: \", scales::percent(share, accuracy = 0.1), \"<br>\",", 
+"          \"N: \", scales::comma(N)", "        )", "      )", 
+"  })", "", "  counts_plot_obj <- reactive({", "    df <- counts_data()", 
+"    req(nrow(df) > 0)", "", "    ggplot(", "      df,", "      aes(x = year, y = share, fill = level, text = tooltip)", 
+"    ) +", "      geom_col(position = \"fill\") +", "      facet_wrap(~population_label) +", 
+"      scale_x_continuous(breaks = sort(unique(df$year))) +", 
+"      scale_y_continuous(labels = scales::percent) +", "      theme_classic(base_size = 13) +", 
+"      theme(", "        legend.position = \"bottom\",", "        axis.text.x = element_text(angle = 45, hjust = 1),", 
+"        axis.title.x = element_text(margin = margin(t = 14))", 
+"      ) +", "      labs(", "        x = \"Year\",", "        y = \"Share\",", 
+"        fill = NULL", "      )", "  })", "", "  output$plot_counts <- renderPlotly({", 
+"    plot_legend_layout(plotly::ggplotly(counts_plot_obj(), tooltip = \"text\"))", 
+"  })", "", "  output$tbl_counts <- renderTable({", "    counts_data() |>", 
+"      dplyr::select(-tooltip)", "  }, striped = TRUE, hover = TRUE, bordered = TRUE, spacing = \"s\")", 
+"", "  observe({", "    ds_choices <- order_dataset_choices(unique(descriptive_mean_index$dataset_label))", 
+"    updateSelectInput(session, \"dmean_dataset\", choices = ds_choices, selected = ds_choices[1])", 
+"  })", "", "  dmean_sheet_choice <- reactive({", "    req(input$dmean_dataset)", 
+"    descriptive_mean_index |>", "      dplyr::filter(dataset_label == input$dmean_dataset)", 
+"  })", "", "  observe({", "    choices <- dmean_sheet_choice() |>", 
+"      dplyr::distinct(group_label) |>", "      dplyr::pull(group_label)", 
+"    selected <- isolate(input$dmean_group_var)", "    if (is.null(selected) || !(selected %in% choices)) {", 
+"      selected <- choices[1]", "    }", "    updateSelectInput(session, \"dmean_group_var\", choices = choices, selected = selected)", 
+"  })", "", "  dmean_sheet_selected <- reactive({", "    rows <- dmean_sheet_choice() |>", 
+"      dplyr::filter(group_label == input$dmean_group_var) |>", 
+"      dplyr::slice(1)", "    req(nrow(rows) == 1)", "    rows", 
+"  })", "", "  dmean_data_raw <- reactive({", "    get_sheet(\"descriptives\", dmean_sheet_selected()$sheet[[1]])", 
+"  })", "", "  output$dmean_variable_ui <- renderUI({", "    df <- dmean_data_raw()", 
+"    req(nrow(df) > 0)", "    var_choices <- visible_outcome_choices(df$name, input$dmean_dataset)", 
+"    req(length(var_choices) > 0)", "", "    if (is_atc_j_dataset(input$dmean_dataset)) {", 
+"      selected <- isolate(input$dmean_variables)", "      selected <- intersect(selected %||% var_choices, var_choices)", 
+"      if (length(selected) == 0) selected <- var_choices", "      checkboxGroupInput(\"dmean_variables\", \"Outcomes\", choices = var_choices, selected = selected)", 
+"    } else {", "      selected <- isolate(input$dmean_variable)", 
+"      if (is.null(selected) || !(selected %in% var_choices)) {", 
+"        selected <- var_choices[[1]]", "      }", "      selectInput(\"dmean_variable\", \"Outcome variable\", choices = var_choices, selected = selected)", 
+"    }", "  })", "", "  observe({", "    df <- dmean_data_raw()", 
+"    req(nrow(df) > 0)", "    type_choices <- order_type_choices(df$type)", 
+"    default_type <- dplyr::coalesce(type_choices[type_choices == \"gemiddelde_per_persoon\"][1], type_choices[1])", 
+"    selected_type <- isolate(input$dmean_type)", "    if (is.null(selected_type) || !(selected_type %in% type_choices)) {", 
+"      selected_type <- default_type", "    }", "    updateSelectInput(session, \"dmean_type\", choices = type_choices, selected = selected_type)", 
+"  })", "", "  dmean_selected_names <- reactive({", "    df <- dmean_data_raw()", 
+"    req(nrow(df) > 0)", "    choices <- visible_outcome_choices(df$name, input$dmean_dataset)", 
+"    req(length(choices) > 0)", "", "    if (is_atc_j_dataset(input$dmean_dataset)) {", 
+"      selected <- input$dmean_variables %||% choices", "      selected <- intersect(selected, choices)", 
+"      req(length(selected) > 0)", "      selected", "    } else {", 
+"      req(input$dmean_variable)", "      input$dmean_variable", 
+"    }", "  })", "", "  output$dmean_inflation_ui <- renderUI({", 
+"    selected_names <- dmean_selected_names()", "    if (length(selected_names) != 1 || !isTRUE(is_monetary_variable(selected_names[[1]]))) {", 
+"      return(NULL)", "    }", "    selected <- isolate(input$dmean_adjust_inflation)", 
+"    checkboxInput(\"dmean_adjust_inflation\", \"Adjust costs to 2023 EUR using CPI\", value = selected %||% TRUE)", 
+"  })", "", "  output$dmean_group_filter_ui <- renderUI({", "    df <- dmean_data_raw()", 
+"    req(nrow(df) > 0)", "    group_var <- dmean_sheet_selected()$group_var[[1]]", 
+"    if (group_var == \"none\" || !(group_var %in% names(df))) {", 
+"      return(NULL)", "    }", "    choices <- sort(unique(as.character(df[[group_var]])))", 
+"    selected <- isolate(input$dmean_group_values)", "    selected <- intersect(selected %||% choices, choices)", 
+"    if (length(selected) == 0) selected <- choices", "    checkboxGroupInput(\"dmean_group_values\", \"Group\", choices = choices, selected = selected)", 
+"  })", "", "  filtered_dmean <- reactive({", "    df <- dmean_data_raw()", 
+"    selected_names <- dmean_selected_names()", "    req(nrow(df) > 0, input$dmean_type)", 
+"    cost_plot <- length(selected_names) == 1 && is_monetary_variable(selected_names[[1]])", 
+"", "    cpi_table <- get_cpi_table(dmean_sheet_selected()$dataset[[1]])", 
+"", "    df <- df |>", "      dplyr::filter(name %in% selected_names, type == input$dmean_type) |>", 
+"      dplyr::mutate(", "        has_hiv_label = prettify_hiv(has_hiv),", 
+"        pretty_variable = prettify_label(name),", "        year = as.numeric(year)", 
+"      ) |>", "      dplyr::left_join(cpi_table, by = \"year\")", 
+"", "    group_var <- dmean_sheet_selected()$group_var[[1]]", 
+"    if (group_var != \"none\" && group_var %in% names(df)) {", 
+"      selected_groups <- input$dmean_group_values", "      if (!is.null(selected_groups) && length(selected_groups) > 0) {", 
+"        df <- df |>", "          dplyr::filter(as.character(.data[[group_var]]) %in% selected_groups)", 
+"      }", "      df <- df |>", "        dplyr::mutate(group_value = as.character(.data[[group_var]]))", 
+"    } else {", "      df <- df |>", "        dplyr::mutate(group_value = \"All\")", 
+"    }", "", "    df <- df |>", "      dplyr::mutate(", "        value_nominal = value,", 
+"        value_adjusted_2023 = dplyr::if_else(!is.na(cpi) & cpi > 0, value / cpi, value),", 
+"        value_plot = if ((is.null(input$dmean_adjust_inflation) || isTRUE(input$dmean_adjust_inflation)) && cost_plot) value_adjusted_2023 else value_nominal,", 
+"        value_label = format_graph_number(value_plot, cost = cost_plot),", 
+"        series_label = if (group_var != \"none\") {", "          paste0(group_value, \" - \", has_hiv_label)", 
+"        } else {", "          has_hiv_label", "        },", 
+"        tooltip = paste0(", "          \"Outcome: \", pretty_variable, \"<br>\",", 
+"          \"Series: \", series_label, \"<br>\",", "          \"Year: \", year, \"<br>\",", 
+"          \"Value: \", value_label, \"<br>\",", "          \"N: \", scales::comma(n_totaal)", 
+"        )", "      )", "", "    df", "  })", "", "  dmean_plot_obj <- reactive({", 
+"    df <- filtered_dmean()", "    req(nrow(df) > 0)", "    selected_names <- dmean_selected_names()", 
+"    cost_plot <- length(selected_names) == 1 && is_monetary_variable(selected_names[[1]])", 
+"", "    if (is_atc_j_dataset(input$dmean_dataset)) {", "      outcome_palette <- build_group_color_palette(df$pretty_variable)", 
+"      p <- ggplot(", "        df,", "        aes(", "          x = year,", 
+"          y = value_plot,", "          color = pretty_variable,", 
+"          linetype = has_hiv_label,", "          group = interaction(pretty_variable, has_hiv_label),", 
+"          text = tooltip", "        )", "      ) +", "        geom_line(linewidth = 1) +", 
+"        geom_point(size = 2, show.legend = FALSE) +", "        scale_color_manual(values = outcome_palette) +", 
+"        scale_linetype_manual(values = hiv_linetype_values) +", 
+"        scale_x_continuous(breaks = sort(unique(df$year))) +", 
+"        scale_y_continuous(labels = function(x) format_graph_number(x, cost = FALSE, axis = TRUE)) +", 
+"        theme_classic(base_size = 13) +", "        theme(legend.position = \"bottom\", axis.text.x = element_text(angle = 45, hjust = 1)) +", 
+"        labs(", "          title = \"Calendar means: ATC J outcomes\",", 
+"          x = \"Calendar year\",", "          y = \"Value\",", 
+"          color = \"Outcome\",", "          linetype = \"HIV status\"", 
+"        )", "", "      if (isTRUE(input$dmean_include_zero)) {", 
+"        p <- p + expand_limits(y = 0)", "      }", "", "      return(p)", 
+"    }", "", "    group_palette <- build_group_color_palette(df$group_value)", 
+"", "    p <- ggplot(", "      df,", "      aes(", "        x = year,", 
+"        y = value_plot,", "        color = group_value,", "        linetype = has_hiv_label,", 
+"        group = interaction(group_value, has_hiv_label),", "        text = tooltip", 
+"      )", "    ) +", "      geom_line(linewidth = 1) +", "      geom_point(size = 2, show.legend = FALSE) +", 
+"      scale_color_manual(values = group_palette) +", "      scale_linetype_manual(values = hiv_linetype_values) +", 
+"      scale_x_continuous(breaks = sort(unique(df$year))) +", 
+"      scale_y_continuous(labels = function(x) format_graph_number(x, cost = cost_plot, axis = TRUE)) +", 
+"      theme_classic(base_size = 13) +", "      theme(legend.position = \"bottom\", axis.text.x = element_text(angle = 45, hjust = 1)) +", 
+"      labs(", "        title = paste(\"Calendar means:\", unique(df$pretty_variable)),", 
+"        x = \"Calendar year\",", "        y = \"Value\",", "        color = \"Group\",", 
+"        linetype = \"HIV status\"", "      )", "", "    if (isTRUE(input$dmean_include_zero)) {", 
+"      p <- p + expand_limits(y = 0)", "    }", "", "    p", 
+"  })", "", "  output$plot_dmean <- renderPlotly({", "    plotly::ggplotly(dmean_plot_obj(), tooltip = \"text\") |>", 
+"      make_line_only_legend() |>", "      plot_legend_layout()", 
+"  })", "", "  output$tbl_dmean <- renderDT({", "    DT::datatable(filtered_dmean(), options = list(pageLength = 15, scrollX = TRUE))", 
+"  })", "", "  observe({", "    ds_choices <- order_dataset_choices(unique(event_mean_index$dataset_label))", 
+"    updateSelectInput(session, \"emean_dataset\", choices = ds_choices, selected = ds_choices[1])", 
+"  })", "", "  output$emean_cohort_ui <- renderUI({", "    req(input$emean_dataset)", 
+"    if (!is_zorgkosten_dataset(input$emean_dataset)) {", "      return(NULL)", 
+"    }", "    checkboxInput(\"emean_restricted_cohort\", \"Show 2020-2023 diagnosis cohort\", value = FALSE)", 
+"  })", "", "  emean_sheet_choice <- reactive({", "    req(input$emean_dataset)", 
+"    if (is_zorgkosten_dataset(input$emean_dataset) && isTRUE(input$emean_restricted_cohort)) {", 
+"      row <- sheet_catalog |>", "        dplyr::filter(file_key == \"event_study\", sheet == \"zorgkosten_mean_2020_2023\") |>", 
+"        dplyr::mutate(", "          dataset = \"zorgkosten\",", 
+"          dataset_label = \"Zorgkosten\",", "          group_var = \"none\",", 
+"          group_label = \"Total\"", "        )", "      req(nrow(row) == 1)", 
+"      return(row)", "    }", "", "    event_mean_index |>", 
+"      dplyr::filter(dataset_label == input$emean_dataset)", 
+"  })", "", "  observe({", "    choices <- emean_sheet_choice() |>", 
+"      dplyr::distinct(group_label) |>", "      dplyr::pull(group_label)", 
+"    selected <- isolate(input$emean_group_var)", "    if (is.null(selected) || !(selected %in% choices)) {", 
+"      selected <- choices[1]", "    }", "    updateSelectInput(session, \"emean_group_var\", choices = choices, selected = selected)", 
+"  })", "", "  emean_sheet_selected <- reactive({", "    rows <- emean_sheet_choice() |>", 
+"      dplyr::filter(group_label == input$emean_group_var) |>", 
+"      dplyr::slice(1)", "    req(nrow(rows) == 1)", "    rows", 
+"  })", "", "  emean_data_raw <- reactive({", "    get_sheet(\"event_study\", emean_sheet_selected()$sheet[[1]])", 
+"  })", "", "  output$emean_variable_ui <- renderUI({", "    df <- emean_data_raw()", 
+"    req(nrow(df) > 0)", "    var_choices <- visible_outcome_choices(df$name, input$emean_dataset)", 
+"    req(length(var_choices) > 0)", "", "    if (is_atc_j_dataset(input$emean_dataset)) {", 
+"      selected <- isolate(input$emean_variables)", "      selected <- intersect(selected %||% var_choices, var_choices)", 
+"      if (length(selected) == 0) selected <- var_choices", "      checkboxGroupInput(\"emean_variables\", \"Outcomes\", choices = var_choices, selected = selected)", 
+"    } else {", "      selected <- isolate(input$emean_variable)", 
+"      if (is.null(selected) || !(selected %in% var_choices)) {", 
+"        selected <- var_choices[[1]]", "      }", "      selectInput(\"emean_variable\", \"Outcome variable\", choices = var_choices, selected = selected)", 
+"    }", "  })", "", "  observe({", "    df <- emean_data_raw()", 
+"    req(nrow(df) > 0)", "    type_choices <- order_type_choices(df$type)", 
+"    default_type <- dplyr::coalesce(type_choices[type_choices == \"gemiddelde_per_persoon\"][1], type_choices[1])", 
+"    selected_type <- isolate(input$emean_type)", "    if (is.null(selected_type) || !(selected_type %in% type_choices)) {", 
+"      selected_type <- default_type", "    }", "    updateSelectInput(session, \"emean_type\", choices = type_choices, selected = selected_type)", 
+"  })", "", "  emean_selected_names <- reactive({", "    df <- emean_data_raw()", 
+"    req(nrow(df) > 0)", "    choices <- visible_outcome_choices(df$name, input$emean_dataset)", 
+"    req(length(choices) > 0)", "", "    if (is_atc_j_dataset(input$emean_dataset)) {", 
+"      selected <- input$emean_variables %||% choices", "      selected <- intersect(selected, choices)", 
+"      req(length(selected) > 0)", "      selected", "    } else {", 
+"      req(input$emean_variable)", "      input$emean_variable", 
+"    }", "  })", "", "  output$emean_inflation_ui <- renderUI({", 
+"    selected_names <- emean_selected_names()", "    if (length(selected_names) != 1 || !isTRUE(is_monetary_variable(selected_names[[1]]))) {", 
+"      return(NULL)", "    }", "    selected <- isolate(input$emean_adjust_inflation)", 
+"    checkboxInput(\"emean_adjust_inflation\", \"Use CPI-adjusted values from Excel\", value = selected %||% TRUE)", 
+"  })", "", "  output$emean_group_filter_ui <- renderUI({", "    df <- emean_data_raw()", 
+"    req(nrow(df) > 0)", "    group_var <- emean_sheet_selected()$group_var[[1]]", 
+"    if (group_var == \"none\" || !(group_var %in% names(df))) {", 
+"      return(NULL)", "    }", "    choices <- sort(unique(as.character(df[[group_var]])))", 
+"    selected <- isolate(input$emean_group_values)", "    selected <- intersect(selected %||% choices, choices)", 
+"    if (length(selected) == 0) selected <- choices", "    checkboxGroupInput(\"emean_group_values\", \"Group\", choices = choices, selected = selected)", 
+"  })", "", "  filtered_emean <- reactive({", "    df <- emean_data_raw()", 
+"    selected_names <- emean_selected_names()", "    req(nrow(df) > 0, input$emean_type)", 
+"    cost_plot <- length(selected_names) == 1 && is_monetary_variable(selected_names[[1]])", 
+"", "    df <- df |>", "      dplyr::filter(name %in% selected_names, type == input$emean_type) |>", 
+"      dplyr::mutate(", "        has_hiv_label = prettify_hiv(has_hiv),", 
+"        pretty_variable = prettify_label(name)", "      )", 
+"", "    group_var <- emean_sheet_selected()$group_var[[1]]", 
+"    if (group_var != \"none\" && group_var %in% names(df)) {", 
+"      selected_groups <- input$emean_group_values", "      if (!is.null(selected_groups) && length(selected_groups) > 0) {", 
+"        df <- df |>", "          dplyr::filter(as.character(.data[[group_var]]) %in% selected_groups)", 
+"      }", "      df <- df |>", "        dplyr::mutate(group_value = as.character(.data[[group_var]]))", 
+"    } else {", "      df <- df |>", "        dplyr::mutate(group_value = \"All\")", 
+"    }", "", "    df |>", "      dplyr::mutate(", "        value_label = format_graph_number(value, cost = cost_plot),", 
+"        value_plot = value,", "        series_label = if (group_var != \"none\") {", 
+"          paste0(group_value, \" - \", has_hiv_label)", "        } else {", 
+"          has_hiv_label", "        },", "        tooltip = paste0(", 
+"          \"Outcome: \", pretty_variable, \"<br>\",", "          \"Series: \", series_label, \"<br>\",", 
+"          \"Years since diagnosis: \", years_since_diagnosis, \"<br>\",", 
+"          \"Value: \", value_label, \"<br>\",", "          \"N: \", scales::comma(n_totaal)", 
+"        )", "      )", "  })", "", "  emean_plot_obj <- reactive({", 
+"    df <- filtered_emean()", "    req(nrow(df) > 0)", "    selected_names <- emean_selected_names()", 
+"    cost_plot <- length(selected_names) == 1 && is_monetary_variable(selected_names[[1]])", 
+"", "    if (is_atc_j_dataset(input$emean_dataset)) {", "      outcome_palette <- build_group_color_palette(df$pretty_variable)", 
+"      p <- ggplot(", "        df,", "        aes(", "          x = years_since_diagnosis,", 
+"          y = value_plot,", "          color = pretty_variable,", 
+"          linetype = has_hiv_label,", "          group = interaction(pretty_variable, has_hiv_label),", 
+"          text = tooltip", "        )", "      ) +", "        geom_line(linewidth = 1) +", 
+"        geom_point(size = 2, show.legend = FALSE) +", "        geom_vline(xintercept = 0, linetype = \"dashed\", color = \"red\") +", 
+"        scale_color_manual(values = outcome_palette) +", "        scale_linetype_manual(values = hiv_linetype_values) +", 
+"        scale_x_continuous(breaks = sort(unique(df$years_since_diagnosis))) +", 
+"        scale_y_continuous(labels = function(x) format_graph_number(x, cost = FALSE, axis = TRUE)) +", 
+"        theme_classic(base_size = 13) +", "        theme(legend.position = \"bottom\") +", 
+"        labs(", "          title = \"Event-study means: ATC J outcomes\",", 
+"          x = \"Years since diagnosis\",", "          y = \"Value\",", 
+"          color = \"Outcome\",", "          linetype = \"HIV status\"", 
+"        )", "", "      if (isTRUE(input$emean_include_zero)) {", 
+"        p <- p + expand_limits(y = 0)", "      }", "", "      return(p)", 
+"    }", "", "    group_palette <- build_group_color_palette(df$group_value)", 
+"", "    p <- ggplot(", "      df,", "      aes(", "          x = years_since_diagnosis,", 
+"          y = value_plot,", "        color = group_value,", 
+"        linetype = has_hiv_label,", "        group = interaction(group_value, has_hiv_label),", 
+"        text = tooltip", "      )", "    ) +", "      geom_line(linewidth = 1) +", 
+"      geom_point(size = 2, show.legend = FALSE) +", "      geom_vline(xintercept = 0, linetype = \"dashed\", color = \"red\") +", 
+"      scale_color_manual(values = group_palette) +", "      scale_linetype_manual(values = hiv_linetype_values) +", 
+"      scale_x_continuous(breaks = sort(unique(df$years_since_diagnosis))) +", 
+"      scale_y_continuous(labels = function(x) format_graph_number(x, cost = cost_plot, axis = TRUE)) +", 
+"      theme_classic(base_size = 13) +", "      theme(legend.position = \"bottom\") +", 
+"      labs(", "        title = paste(\"Event-study means:\", unique(df$pretty_variable)),", 
+"        x = \"Years since diagnosis\",", "        y = \"Value\",", 
+"        color = \"Group\",", "        linetype = \"HIV status\"", 
+"      )", "", "    if (isTRUE(input$emean_include_zero)) {", 
+"      p <- p + expand_limits(y = 0)", "    }", "", "    p", 
+"  })", "", "  output$plot_emean <- renderPlotly({", "    plotly::ggplotly(emean_plot_obj(), tooltip = \"text\") |>", 
+"      make_line_only_legend() |>", "      plot_legend_layout()", 
+"  })", "", "  output$tbl_emean <- renderDT({", "    DT::datatable(filtered_emean(), options = list(pageLength = 15, scrollX = TRUE))", 
+"  })", "", "  observe({", "    ds_choices <- order_dataset_choices(unique(es_group_index$dataset_label))", 
+"    updateSelectInput(session, \"es_dataset\", choices = ds_choices, selected = ds_choices[1])", 
+"  })", "", "  output$es_cohort_ui <- renderUI({", "    req(input$es_dataset)", 
+"    if (!is_zorgkosten_dataset(input$es_dataset)) {", "      return(NULL)", 
+"    }", "    checkboxInput(\"es_restricted_cohort\", \"Show 2020-2023 diagnosis cohort\", value = FALSE)", 
+"  })", "", "  es_data_raw <- reactive({", "    req(input$es_dataset)", 
+"    grouped_sheet <- es_group_index |>", "      dplyr::filter(dataset_label == input$es_dataset) |>", 
+"      dplyr::slice(1) |>", "      dplyr::pull(sheet)", "    overall_sheet <- es_index |>", 
+"      dplyr::filter(dataset_label == input$es_dataset) |>", 
+"      dplyr::slice(1) |>", "      dplyr::pull(sheet)", "    req(length(grouped_sheet) == 1, length(overall_sheet) == 1)", 
+"", "    df_overall <- get_sheet(\"event_study\", overall_sheet) |>", 
+"      dplyr::filter(", "        !is_zorgkosten_dataset(input$es_dataset) |", 
+"          (isTRUE(input$es_restricted_cohort) & n == 11213) |", 
+"          (!isTRUE(input$es_restricted_cohort) & n == 31999)", 
+"      ) |>", "      dplyr::mutate(", "        factor = \"overall\",", 
+"        group = \"Total\"", "      )", "", "    if (is_zorgkosten_dataset(input$es_dataset) && isTRUE(input$es_restricted_cohort)) {", 
+"      return(df_overall)", "    }", "", "    df_grouped <- get_sheet(\"event_study\", grouped_sheet)", 
+"    dplyr::bind_rows(df_overall, df_grouped)", "  })", "", "  observe({", 
+"    df <- es_data_raw()", "    req(nrow(df) > 0)", "    facs <- unique(df$factor)", 
+"    facs <- c(\"overall\", sort(setdiff(facs, \"overall\")))", 
+"    selected <- isolate(input$es_factor)", "    if (is.null(selected) || !(selected %in% facs)) {", 
+"      selected <- \"overall\"", "    }", "    updateSelectInput(", 
+"      session,", "      \"es_factor\",", "      choices = stats::setNames(facs, dplyr::if_else(facs == \"overall\", \"Total\", prettify_factor(facs))),", 
+"      selected = selected", "    )", "  })", "", "  observe({", 
+"    df <- es_data_raw()", "    req(nrow(df) > 0, input$es_factor)", 
+"    outc <- df |>", "      dplyr::filter(factor == input$es_factor) |>", 
+"      dplyr::pull(outcome) |>", "      visible_outcome_choices(input$es_dataset)", 
+"    req(length(outc) > 0)", "    selected <- isolate(input$es_outcome)", 
+"    if (is.null(selected) || !(selected %in% outc)) {", "      selected <- outc[1]", 
+"    }", "    updateSelectInput(session, \"es_outcome\", choices = outc, selected = selected)", 
+"  })", "", "  output$es_inflation_ui <- renderUI({", "    req(input$es_outcome)", 
+"    if (!isTRUE(is_monetary_variable(input$es_outcome))) {", 
+"      return(NULL)", "    }", "    selected <- isolate(input$es_adjust_inflation)", 
+"    checkboxInput(\"es_adjust_inflation\", \"Use CPI-adjusted values from Excel\", value = selected %||% TRUE)", 
+"  })", "", "  output$es_group_filter_ui <- renderUI({", "    df <- es_data_raw()", 
+"    req(nrow(df) > 0, input$es_factor, input$es_outcome)", "    if (identical(input$es_factor, \"overall\")) {", 
+"      return(NULL)", "    }", "    groups <- df |>", "      dplyr::filter(factor == input$es_factor, outcome == input$es_outcome) |>", 
+"      dplyr::pull(group) |>", "      unique() |>", "      sort()", 
+"    selected <- isolate(input$es_groups)", "    selected <- intersect(selected %||% groups, groups)", 
+"    if (length(selected) == 0) selected <- groups", "    checkboxGroupInput(\"es_groups\", \"Group\", choices = groups, selected = selected)", 
+"  })", "", "  filtered_es <- reactive({", "    df <- es_data_raw()", 
+"    req(nrow(df) > 0, input$es_factor, input$es_outcome)", "    cost_outcome <- is_monetary_variable(input$es_outcome)", 
+"    df <- df |>", "      dplyr::filter(factor == input$es_factor, outcome == input$es_outcome)", 
+"", "    if (!identical(input$es_factor, \"overall\") && !is.null(input$es_groups) && length(input$es_groups) > 0) {", 
+"      df <- df |>", "        dplyr::filter(group %in% input$es_groups)", 
+"    }", "", "    df |>", "      dplyr::arrange(group, years_since_diagnosis) |>", 
+"      dplyr::mutate(", "        factor_label = dplyr::if_else(factor == \"overall\", \"Total\", prettify_factor(factor)),", 
+"        outcome_label = prettify_label(outcome),", "        ci_low = total_effect - 1.96 * total_se,", 
+"        ci_high = total_effect + 1.96 * total_se,", "        coef_plot = coef,", 
+"        lo_plot = lo,", "        hi_plot = hi,", "        coef_label = format_graph_number(coef_plot, cost = cost_outcome),", 
+"        lo_label = format_graph_number(lo_plot, cost = cost_outcome),", 
+"        hi_label = format_graph_number(hi_plot, cost = cost_outcome),", 
+"        avg_effect_ci_label = format_effect_ci(total_effect, total_se, cost = cost_outcome)", 
+"      )", "  })", "", "  es_summary <- reactive({", "    df <- filtered_es()", 
+"    req(nrow(df) > 0)", "    df |>", "      dplyr::group_by(group) |>", 
+"      dplyr::summarise(", "        average_post_treatment_effect = dplyr::first(total_effect),", 
+"        average_post_treatment_se = dplyr::first(total_se),", 
+"        average_ci_low = dplyr::first(ci_low),", "        average_ci_high = dplyr::first(ci_high),", 
+"        average_effect_ci = dplyr::first(avg_effect_ci_label),", 
+"        n = dplyr::first(n),", "        .groups = \"drop\"", 
+"      ) |>", "      dplyr::arrange(group)", "  })", "", "  output$es_avg_effect <- renderUI({", 
+"    df <- filtered_es()", "    sm <- es_summary()", "    req(nrow(df) > 0, nrow(sm) > 0)", 
+"    effect_txt <- paste0(sm$group, \": \", sm$average_effect_ci, collapse = \" | \")", 
+"    HTML(sprintf(", "      \"<div style='margin-bottom:10px;'><b>Average post-treatment effect [95%% CI]:</b> %s</div>\",", 
+"      effect_txt", "    ))", "  })", "", "  es_plot_obj <- reactive({", 
+"    df <- filtered_es()", "    sm <- es_summary()", "    req(nrow(df) > 0, nrow(sm) > 0)", 
+"    cost_outcome <- is_monetary_variable(input$es_outcome)", 
+"    avg_txt <- paste0(sm$group, \"=\", sm$average_effect_ci, collapse = \"; \")", 
+"    subtitle_txt <- paste0(unique(df$factor_label), \" | Average effect [95% CI]: \", avg_txt)", 
+"    group_palette <- build_group_color_palette(df$group)", "", 
+"    p <- ggplot(", "      df,", "      aes(", "        x = years_since_diagnosis,", 
+"        y = coef_plot,", "        color = group,", "        group = group,", 
+"        text = paste0(", "          \"Group: \", group, \"<br>\",", 
+"          \"Year: \", years_since_diagnosis, \"<br>\",", "          \"Estimate: \", coef_label, \"<br>\",", 
+"          \"95% CI: [\", lo_label, \", \", hi_label, \"]<br>\",", 
+"          \"Average effect [95% CI]: \", avg_effect_ci_label, \"<br>\",", 
+"          \"N: \", scales::comma(n)", "        )", "      )", 
+"    ) +", "      geom_errorbar(aes(ymin = lo_plot, ymax = hi_plot), width = 0.1) +", 
+"      geom_line(linewidth = 1) +", "      geom_point(size = 2) +", 
+"      geom_hline(yintercept = 0, linetype = \"dashed\", color = \"gray40\") +", 
+"      geom_vline(xintercept = 0, linetype = \"dashed\", color = \"red\") +", 
+"      scale_color_manual(values = group_palette) +", "      scale_x_continuous(breaks = sort(unique(df$years_since_diagnosis))) +", 
+"      scale_y_continuous(labels = function(x) format_graph_number(x, cost = cost_outcome, axis = TRUE)) +", 
+"      theme_classic(base_size = 13) +", "      theme(legend.position = \"bottom\") +", 
+"      labs(", "        title = paste(\"Event study estimates:\", unique(df$outcome_label)),", 
+"        subtitle = subtitle_txt,", "        x = \"Years since diagnosis\",", 
+"        y = \"Change relative to pre-diagnosis\",", "        color = \"Group\"", 
+"      )", "", "    p + expand_limits(y = 0)", "  })", "", "  output$plot_es <- renderPlotly({", 
+"    plot_legend_layout(plotly::ggplotly(es_plot_obj(), tooltip = \"text\"))", 
+"  })", "", "  output$tbl_es_summary <- renderDT({", "    DT::datatable(", 
+"      es_summary() |>", "        dplyr::mutate(dplyr::across(c(average_post_treatment_effect, average_post_treatment_se), ~ round(.x, 3))),", 
+"      options = list(pageLength = 10, scrollX = TRUE),", "      rownames = FALSE", 
+"    )", "  })", "", "  output$tbl_es <- renderDT({", "    DT::datatable(filtered_es(), options = list(pageLength = 15, scrollX = TRUE))", 
+"  })", "", "  output$tree_model_ui <- renderUI({", "    req(input$tree_type)", 
+"    if (!identical(input$tree_type, \"Cost tree\")) {", "      return(NULL)", 
+"    }", "    selectInput(", "      \"tree_model\",", "      \"Components included\",", 
+"      choices = stats::setNames(names(tree_cost_model_lookup), unname(tree_cost_model_lookup)),", 
+"      selected = names(tree_cost_model_lookup)[[1]]", "    )", 
+"  })", "", "  observe({", "    req(input$tree_type)", "    if (identical(input$tree_type, \"Cost tree\")) {", 
+"      req(input$tree_model)", "      outcomes <- tree_cost_index |>", 
+"        dplyr::filter(model_code == input$tree_model) |>", "        dplyr::distinct(outcome, outcome_label) |>", 
+"        dplyr::arrange(outcome_label)", "    } else {", "      outcomes <- tree_prevalence_index |>", 
+"        dplyr::distinct(outcome, outcome_label) |>", "        dplyr::arrange(outcome_label)", 
+"    }", "    req(nrow(outcomes) > 0)", "    updateSelectInput(", 
+"      session,", "      \"tree_outcome\",", "      choices = stats::setNames(outcomes$outcome, outcomes$outcome_label),", 
+"      selected = outcomes$outcome[[1]]", "    )", "  })", "", 
+"  tree_data <- reactive({", "    req(input$tree_type, input$tree_outcome)", 
+"", "    if (identical(input$tree_type, \"Cost tree\")) {", "      req(input$tree_model)", 
+"      row <- tree_cost_index |>", "        dplyr::filter(model_code == input$tree_model, outcome == input$tree_outcome) |>", 
+"        dplyr::slice(1)", "    } else {", "      row <- tree_prevalence_index |>", 
+"        dplyr::filter(outcome == input$tree_outcome) |>", "        dplyr::slice(1)", 
+"    }", "    req(nrow(row) == 1)", "", "    df <- get_sheet(\"trees\", row$sheet[[1]])", 
+"    raw_cols <- names(df)", "    if (all(c(\"split_label\", \"path_to_node\") %in% names(df))) {", 
+"      df <- df |>", "        dplyr::mutate(split_label = fix_split_label(split_label, path_to_node))", 
+"    }", "    if (!(\"percentage\" %in% names(df))) {", "      df <- df |>", 
+"        dplyr::mutate(percentage = as.numeric(total_n) / max(as.numeric(total_n), na.rm = TRUE))", 
+"    } else {", "      df <- df |>", "        dplyr::mutate(percentage = as.numeric(percentage))", 
+"    }", "", "    df <- df |>", "      dplyr::mutate(", "        parent = dplyr::if_else(node > 1, floor(node / 2), NA_real_),", 
+"        x = purrr::map_dbl(node, node_x_position),", "        y = -level,", 
+"        split_label_wrapped = dplyr::if_else(split_label == \"root\", \"Root\", wrap_for_label(split_label)),", 
+"        predicted_value = if (identical(input$tree_type, \"Cost tree\")) {", 
+"          paste0(\"\342\202\254\", format_graph_number(predicted_class, cost = TRUE))", 
+"        } else {", "          format_prediction(predicted_class)", 
+"        },", "        node_label = paste0(split_label_wrapped, \"\\nN=\", scales::comma(total_n), \"\\nPred=\", predicted_value),", 
+"        tooltip = paste0(", "          \"Node: \", node, \"<br>\",", 
+"          \"Split: \", split_label, \"<br>\",", "          \"N: \", scales::comma(total_n), \"<br>\",", 
+"          \"Predicted value: \", predicted_value, \"<br>\",", 
+"          \"Path: \", path_to_node", "        )", "      )", 
+"", "    edges <- df |>", "      dplyr::filter(!is.na(parent)) |>", 
+"      dplyr::left_join(", "        df |>", "          dplyr::select(node, x_parent = x, y_parent = y),", 
+"        by = c(\"parent\" = \"node\")", "      ) |>", "      dplyr::transmute(x = x_parent, y = y_parent, xend = x, yend = y)", 
+"", "    list(meta = row, nodes = df, edges = edges, raw_cols = raw_cols)", 
+"  })", "", "  output$plot_tree <- DiagrammeR::renderGrViz({", 
+"    td <- tree_data()", "    nodes <- td$nodes", "    req(nrow(nodes) > 0)", 
+"    is_cost_tree <- identical(input$tree_type, \"Cost tree\")", 
+"", "    build_tree_grviz(", "      nodes,", "      prevalentie = !is_cost_tree,", 
+"      cost_tree = is_cost_tree", "    )", "  })", "", "  output$tbl_tree <- renderDT({", 
+"    td <- tree_data()", "    DT::datatable(td$nodes, options = list(pageLength = 15, scrollX = TRUE))", 
+"  })", "", "  xlsx_content_type <- \"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\"", 
+"", "  output$dl_prevalence <- downloadHandler(", "    filename = function() \"prevalence.xlsx\",", 
+"    content = function(file) write_download_xlsx(prevalence_df(), file),", 
+"    contentType = xlsx_content_type", "  )", "", "  output$dl_prevalence_plot <- make_plot_download(prevalence_plot_obj, \"prevalence.png\")", 
+"", "  output$dl_infectious_status <- downloadHandler(", "    filename = function() \"hiv_stage_at_diagnosis.xlsx\",", 
+"    content = function(file) write_download_xlsx(infectious_status_df(), file),", 
+"    contentType = xlsx_content_type", "  )", "", "  output$dl_infectious_status_plot <- make_plot_download(infectious_status_plot_obj, \"hiv_stage_at_diagnosis.png\")", 
+"", "  output$dl_art_distribution <- downloadHandler(", "    filename = function() \"art_cost_distribution.xlsx\",", 
+"    content = function(file) write_download_xlsx(art_distribution_df(), file),", 
+"    contentType = xlsx_content_type", "  )", "", "  output$dl_art_distribution_plot <- make_plot_download(art_distribution_plot_obj, \"art_cost_distribution.png\", width = 9, height = 16)", 
+"", "  output$dl_new_old_costs <- downloadHandler(", "    filename = function() {", 
+"      paste0(\"costs_new_old_diagnoses_\", safe_file_stub(input$new_old_cost_view), \".xlsx\")", 
+"    },", "    content = function(file) write_download_xlsx(trim_to_raw_columns(new_old_costs_data(), new_old_costs_raw()), file),", 
+"    contentType = xlsx_content_type", "  )", "", "  output$dl_new_old_costs_plot <- downloadHandler(", 
+"    filename = function() paste0(\"costs_new_old_diagnoses_\", safe_file_stub(input$new_old_cost_view), \".png\"),", 
+"    content = function(file) ggplot2::ggsave(file, plot = new_old_costs_plot_obj(), width = 14, height = 10, dpi = 150, units = \"in\", bg = \"white\"),", 
+"    contentType = \"image/png\"", "  )", "", "  output$dl_counts <- downloadHandler(", 
+"    filename = function() {", "      paste0(\"counts_\", safe_file_stub(c(input$count_variable, input$count_view)), \".xlsx\")", 
+"    },", "    content = function(file) write_download_xlsx(trim_to_raw_columns(counts_data(), counts_data_raw()), file),", 
+"    contentType = xlsx_content_type", "  )", "", "  output$dl_counts_plot <- downloadHandler(", 
+"    filename = function() paste0(\"counts_\", safe_file_stub(c(input$count_variable, input$count_view)), \".png\"),", 
+"    content = function(file) ggplot2::ggsave(file, plot = counts_plot_obj(), width = 11, height = 7, dpi = 150, units = \"in\", bg = \"white\"),", 
+"    contentType = \"image/png\"", "  )", "", "  output$dl_dmean <- downloadHandler(", 
+"    filename = function() {", "      paste0(\"calendar_means_\", safe_file_stub(c(input$dmean_dataset, dmean_selected_names(), input$dmean_type)), \".xlsx\")", 
+"    },", "    content = function(file) write_download_xlsx(trim_to_raw_columns(filtered_dmean(), dmean_data_raw()), file),", 
+"    contentType = xlsx_content_type", "  )", "", "  output$dl_dmean_plot <- downloadHandler(", 
+"    filename = function() paste0(\"calendar_means_\", safe_file_stub(c(input$dmean_dataset, dmean_selected_names(), input$dmean_type)), \".png\"),", 
+"    content = function(file) ggplot2::ggsave(file, plot = dmean_plot_obj(), width = 11, height = 7, dpi = 150, units = \"in\", bg = \"white\"),", 
+"    contentType = \"image/png\"", "  )", "", "  output$dl_emean <- downloadHandler(", 
+"    filename = function() {", "      paste0(\"event_means_\", safe_file_stub(c(input$emean_dataset, emean_selected_names(), input$emean_type)), \".xlsx\")", 
+"    },", "    content = function(file) write_download_xlsx(trim_to_raw_columns(filtered_emean(), emean_data_raw()), file),", 
+"    contentType = xlsx_content_type", "  )", "", "  output$dl_emean_plot <- downloadHandler(", 
+"    filename = function() paste0(\"event_means_\", safe_file_stub(c(input$emean_dataset, emean_selected_names(), input$emean_type)), \".png\"),", 
+"    content = function(file) ggplot2::ggsave(file, plot = emean_plot_obj(), width = 11, height = 7, dpi = 150, units = \"in\", bg = \"white\"),", 
+"    contentType = \"image/png\"", "  )", "", "  output$dl_es <- downloadHandler(", 
+"    filename = function() {", "      paste0(\"event_study_estimates_\", safe_file_stub(c(input$es_dataset, input$es_factor, input$es_outcome)), \".xlsx\")", 
+"    },", "    content = function(file) write_download_xlsx(trim_to_raw_columns(filtered_es(), es_data_raw()), file),", 
+"    contentType = xlsx_content_type", "  )", "", "  output$dl_es_plot <- downloadHandler(", 
+"    filename = function() paste0(\"event_study_estimates_\", safe_file_stub(c(input$es_dataset, input$es_factor, input$es_outcome)), \".png\"),", 
+"    content = function(file) ggplot2::ggsave(file, plot = es_plot_obj(), width = 11, height = 7, dpi = 150, units = \"in\", bg = \"white\"),", 
+"    contentType = \"image/png\"", "  )", "", "  output$dl_tree <- downloadHandler(", 
+"    filename = function() {", "      paste0(", "        \"tree_\",", 
+"        safe_file_stub(c(input$tree_type %||% \"stage\", input$tree_model %||% \"\", input$tree_outcome)),", 
+"        \".xlsx\"", "      )", "    },", "    content = function(file) {", 
+"      td <- tree_data()", "      write_download_xlsx(trim_to_raw_columns(td$nodes, td$raw_cols), file)", 
+"    },", "    contentType = xlsx_content_type", "  )", "", "  output$dl_tree_plot <- downloadHandler(", 
+"    filename = function() {", "      paste0(", "        \"tree_\",", 
+"        safe_file_stub(c(input$tree_type %||% \"stage\", input$tree_model %||% \"\", input$tree_outcome)),", 
+"        \".png\"", "      )", "    },", "    content = function(file) {", 
+"      is_cost_tree <- identical(input$tree_type, \"Cost tree\")", 
+"      gv <- build_tree_grviz(tree_data()$nodes, prevalentie = !is_cost_tree, cost_tree = is_cost_tree)", 
+"      svg_text <- DiagrammeRsvg::export_svg(gv)", "      rsvg::rsvg_png(charToRaw(svg_text), file, width = 2800)", 
+"    },", "    contentType = \"image/png\"", "  )", "}", "", 
+"shinyApp(ui, server)")
+
+
+regex_matches <- function(text, pattern) {
+  match_pos <- gregexpr(pattern, text, perl = TRUE)
+  matches <- regmatches(text, match_pos)[[1]]
+  if (length(matches) == 1 && identical(matches, character(0))) {
+    return(character())
+  }
+  sub(pattern, "\\1", matches, perl = TRUE)
+}
+
+extract_shiny_ids <- function(code_text) {
+  input_ids <- regex_matches(code_text, "\\binput\\$([A-Za-z][A-Za-z0-9_.]*)")
+  output_ids <- regex_matches(code_text, "\\boutput\\$([A-Za-z][A-Za-z0-9_.]*)")
+  input_bracket_ids <- regex_matches(code_text, "\\binput\\[\\[[\"']([^\"']+)[\"']\\]\\]")
+  output_bracket_ids <- regex_matches(code_text, "\\boutput\\[\\[[\"']([^\"']+)[\"']\\]\\]")
+  constructor_ids <- regex_matches(
+    code_text,
+    "\\b(?:selectInput|radioButtons|checkboxInput|checkboxGroupInput|downloadButton|plotlyOutput|DTOutput|dataTableOutput|tableOutput|plotOutput|uiOutput|verbatimTextOutput|textOutput|grVizOutput)\\s*\\(\\s*[\"']([^\"']+)[\"']"
+  )
+  namespaced_constructor_ids <- regex_matches(
+    code_text,
+    "\\b[A-Za-z0-9_.]+::(?:grVizOutput|DTOutput|dataTableOutput)\\s*\\(\\s*[\"']([^\"']+)[\"']"
+  )
+  navbar_ids <- regex_matches(code_text, "\\bid\\s*=\\s*[\"']([^\"']+)[\"']")
+
+  unique(c(
+    input_ids,
+    output_ids,
+    input_bracket_ids,
+    output_bracket_ids,
+    constructor_ids,
+    namespaced_constructor_ids,
+    navbar_ids
   ))
 }
 
-data_path <- dplyr::case_when(
-  file.exists("data/output.xlsx") ~ "data/output.xlsx",
-  file.exists("output.xlsx") ~ "output.xlsx",
-  TRUE ~ "data/output.xlsx"
-)
-log_file <- "hiv_dashboard_log.txt"
-unlink(log_file)
-
-log_msg <- function(msg) {
-  line <- paste0("[", Sys.time(), "] ", msg)
-  cat(line, "\n", file = log_file, append = TRUE)
-  cat(line, "\n")
-  flush.console()
+escape_regex <- function(x) {
+  gsub("([][{}()+*^$|\\\\?.])", "\\\\\\1", x)
 }
 
-safe_read_sheet <- function(path, sheet) {
-  tryCatch(
-    readxl::read_excel(path, sheet = sheet, guess_max = 100000),
-    error = function(e) {
-      log_msg(sprintf("[safe_read_sheet] Failed to read %s: %s", sheet, e$message))
-      tibble::tibble()
-    }
-  )
-}
+prefix_id_references <- function(code_text, prefix) {
+  ids <- extract_shiny_ids(code_text)
+  ids <- ids[nzchar(ids)]
+  ids <- ids[order(nchar(ids), decreasing = TRUE)]
 
-infer_dataset <- function(sheet_name) {
-  if (grepl("_es_group$", sheet_name)) {
-    sub("_es_group$", "", sheet_name)
-  } else if (grepl("_es$", sheet_name)) {
-    sub("_es$", "", sheet_name)
-  } else if (grepl("_mean", sheet_name)) {
-    sub("_mean.*$", "", sheet_name)
-  } else {
-    NA_character_
-  }
-}
+  for (id in ids) {
+    id_regex <- escape_regex(id)
+    prefixed <- paste0(prefix, id)
 
-prettify_label <- function(x) {
-  x |>
-    stringr::str_replace_all("_", " ") |>
-    stringr::str_replace_all("\\s+", " ") |>
-    stringr::str_trim() |>
-    stringr::str_to_title()
-}
-
-prettify_factor <- function(x) {
-  dplyr::recode(
-    x,
-    geslacht = "Sex",
-    migratie_achtergrond = "Migration background",
-    hiv_stage = "HIV stage",
-    leeftijd_cat = "Age category",
-    burgstaat = "Marital status",
-    typehh = "Household type",
-    ggd = "GGD",
-    hgopl = "Education",
-    .default = prettify_label(x)
-  )
-}
-
-prettify_hiv <- function(x) {
-  dplyr::recode(
-    as.character(x),
-    `0` = "Matched controls / no HIV",
-    `1` = "People with HIV",
-    .default = as.character(x)
-  )
-}
-
-cpi_index <- tibble::tibble(
-  year = 2014:2024,
-  cpi = c(99.40, 100.00, 100.32, 101.70, 103.44, 106.16,
-          107.51, 110.39, 121.43, 126.09, 130.31)
-)
-base_2023 <- cpi_index$cpi[cpi_index$year == 2023]
-cpi_index <- cpi_index |>
-  dplyr::mutate(cpi = cpi / base_2023)
-
-is_cost_variable <- function(x) {
-  x_chr <- as.character(x)
-  !is.na(x_chr) &
-    (
-      stringr::str_detect(x_chr, "^zvwk") |
-        stringr::str_detect(x_chr, "^costs_")
-    ) &
-    !stringr::str_detect(x_chr, "^used_")
-}
-
-sheet_names <- readxl::excel_sheets(data_path)
-log_msg(sprintf("[startup] Found %d sheets", length(sheet_names)))
-
-sheet_preview <- purrr::map_dfr(sheet_names, function(s) {
-  df <- safe_read_sheet(data_path, s)
-  cols_sorted <- sort(names(df))
-  tibble::tibble(
-    sheet = s,
-    dataset = infer_dataset(s),
-    n_rows = nrow(df),
-    cols = paste(names(df), collapse = ", "),
-    has_value = all(c("value", "variable", "type") %in% names(df)),
-    has_es = all(c("outcome", "coef", "lo", "hi", "years_since_diagnosis") %in% names(df)),
-    has_es_group = all(c("outcome", "factor", "group", "coef", "lo", "hi", "years_since_diagnosis") %in% names(df)),
-    has_profile = identical(cols_sorted, sort(c("has_hiv", "level", "N", "category", "share"))),
-    has_shm_total = identical(s, "shm_total") || ("year" %in% names(df) && sum(grepl("^N_|^n_", names(df))) >= 1)
-  )
-})
-
-means_index <- sheet_preview |>
-  dplyr::filter(has_value, !sheet %in% c("codes", "matching_stats")) |>
-  dplyr::filter(
-    !stringr::str_detect(sheet, "_mean_yr$") |
-      stringr::str_detect(sheet, "_mean_yr.*_all$")
-  ) |>
-  dplyr::mutate(
-    dataset_label = prettify_label(dataset),
-    time_scale = dplyr::case_when(
-      stringr::str_detect(sheet, "_mean_yr") ~ "Calendar year",
-      TRUE ~ "Years since diagnosis"
-    ),
-    group_var = dplyr::case_when(
-      stringr::str_detect(sheet, "_mean_yr_gesl_all$|_mean_gesl(_all)?$") ~ "geslacht",
-      stringr::str_detect(sheet, "_mean_yr_migr_all$|_mean_migr(_all)?$") ~ "migratie_achtergrond",
-      stringr::str_detect(sheet, "_mean_yr_hiv.*_all$|_mean_hiv.*(_all)?$") ~ "hiv_stage",
-      stringr::str_detect(sheet, "_mean_yr_leef_all$|_mean_leef(_all)?$") ~ "leeftijd_cat",
-      stringr::str_detect(cols, "geslacht") ~ "geslacht",
-      stringr::str_detect(cols, "migratie_achtergrond") ~ "migratie_achtergrond",
-      stringr::str_detect(cols, "hiv_stage") ~ "hiv_stage",
-      stringr::str_detect(cols, "leeftijd_cat") ~ "leeftijd_cat",
-      TRUE ~ "none"
-    ),
-    group_label = dplyr::case_when(
-      group_var == "none" ~ "No subgroup split",
-      TRUE ~ prettify_factor(group_var)
+    code_text <- gsub(
+      paste0("\\binput\\$", id_regex, "\\b"),
+      paste0("input$", prefixed),
+      code_text,
+      perl = TRUE
     )
-  )
-
-es_index <- sheet_preview |>
-  dplyr::filter(has_es, !has_es_group, !sheet %in% c("codes", "matching_stats")) |>
-  dplyr::mutate(dataset_label = prettify_label(dataset))
-
-es_group_index <- sheet_preview |>
-  dplyr::filter(has_es_group, !sheet %in% c("codes", "matching_stats")) |>
-  dplyr::mutate(dataset_label = prettify_label(dataset))
-
-profile_sheet_name <- dplyr::first(sheet_preview$sheet[sheet_preview$has_profile])
-shm_sheet_name <- dplyr::first(sheet_preview$sheet[sheet_preview$has_shm_total & sheet_preview$sheet != "codes" & sheet_preview$sheet != "matching_stats"])
-
-cache_env <- new.env(parent = emptyenv())
-get_sheet <- function(sheet_name) {
-  req(!is.na(sheet_name), nzchar(sheet_name))
-  key <- paste0("sheet__", sheet_name)
-  if (!exists(key, envir = cache_env, inherits = FALSE)) {
-    df <- safe_read_sheet(data_path, sheet_name)
-    assign(key, df, envir = cache_env)
-    log_msg(sprintf("[cache] Loaded %s (%d rows)", sheet_name, nrow(df)))
+    code_text <- gsub(
+      paste0("\\boutput\\$", id_regex, "\\b"),
+      paste0("output$", prefixed),
+      code_text,
+      perl = TRUE
+    )
+    code_text <- gsub(
+      paste0("input\\[\\[([\"'])", id_regex, "\\1\\]\\]"),
+      paste0("input[[\\1", prefixed, "\\1]]"),
+      code_text,
+      perl = TRUE
+    )
+    code_text <- gsub(
+      paste0("output\\[\\[([\"'])", id_regex, "\\1\\]\\]"),
+      paste0("output[[\\1", prefixed, "\\1]]"),
+      code_text,
+      perl = TRUE
+    )
+    code_text <- gsub(paste0("\"", id, "\""), paste0("\"", prefixed, "\""), code_text, fixed = TRUE)
+    code_text <- gsub(paste0("'", id, "'"), paste0("'", prefixed, "'"), code_text, fixed = TRUE)
   }
-  get(key, envir = cache_env, inherits = FALSE)
+
+  list(code = code_text, ids = ids)
 }
+
+load_prefixed_app_from_code <- function(code_lines, label, prefix) {
+  code_text <- paste(code_lines, collapse = "\n")
+  prefixed <- prefix_id_references(code_text, prefix)
+  env <- new.env(parent = globalenv())
+  eval(parse(text = prefixed$code, srcfile = label), envir = env)
+
+  if (!exists("ui", envir = env, inherits = FALSE) || !exists("server", envir = env, inherits = FALSE)) {
+    stop(sprintf("%s must define ui and server", label), call. = FALSE)
+  }
+
+  list(
+    ui = get("ui", envir = env, inherits = FALSE),
+    server = get("server", envir = env, inherits = FALSE),
+    env = env,
+    ids = prefixed$ids
+  )
+}
+
+iteration_2_app <- load_prefixed_app_from_code(embedded_iteration_2_code, "embedded app_iteration_2.R", "it2_")
+iteration_3_app <- load_prefixed_app_from_code(embedded_iteration_3_code, "embedded app_iteration_3.R", "it3_")
 
 ui <- navbarPage(
-  title = "Understanding HIV care in the Netherlands",
-  id = "main_nav",
-  header = tags$div(
-    style = "padding: 12px 18px 4px 18px; color: #4b5563; font-size: 14px;",
-    "Explore healthcare costs, medication use, profiles, and event-study estimates for people with HIV and matched controls."
-  ),
-  
-  tabPanel(
-    "Overview",
-    fluidPage(
-      br(),
-      fluidRow(
-        column(
-          12,
-          h4("Totals"),
-          plotlyOutput("plot_shm_total", height = "460px"),
-          DTOutput("tbl_shm_total")
-        )
-      )
+  title = app_title,
+  id = "combined_main_nav",
+  header = tagList(
+    tags$style(HTML("
+      .iteration-wrapper > .navbar .navbar-brand { display: none; }
+      .iteration-wrapper > div[style^='padding: 12px 18px 4px 18px'] { display: none; }
+      .iteration-wrapper > .container-fluid > .row:first-child { display: none; }
+      .iteration-wrapper > .navbar { margin-bottom: 12px; }
+    ")),
+    tags$div(
+      style = "padding: 12px 18px 4px 18px; color: #4b5563; font-size: 14px;",
+      app_subtitle
     )
   ),
-  
   tabPanel(
-    "Profiles",
-    sidebarLayout(
-      sidebarPanel(
-        selectInput("profile_category", "Category", choices = NULL),
-        downloadButton("dl_profile", "Download filtered profile data (Excel)")
-      ),
-      mainPanel(
-        plotlyOutput("plot_profile", height = "820px"),
-        DTOutput("tbl_profile")
-      )
-    )
+    "Iteration 2",
+    tags$div(class = "iteration-wrapper", iteration_2_app$ui)
   ),
-  
   tabPanel(
-    "Aggregated means",
-    sidebarLayout(
-      sidebarPanel(
-        selectInput("mean_dataset", "Dataset", choices = NULL),
-        radioButtons("mean_time_scale", "Time scale", choices = c("Years since diagnosis", "Calendar year")),
-        selectInput("mean_group_var", "Subgroup split", choices = NULL),
-        selectInput("mean_variable", "Outcome variable", choices = NULL),
-        selectInput("mean_type", "Statistic type", choices = NULL),
-        uiOutput("mean_inflation_ui"),
-        uiOutput("mean_group_filter_ui"),
-        downloadButton("dl_mean", "Download filtered mean data (Excel)")
-      ),
-      mainPanel(
-        plotlyOutput("plot_mean", height = "660px"),
-        DTOutput("tbl_mean")
-      )
-    )
-  ),
-  
-  tabPanel(
-    "Event study",
-    sidebarLayout(
-      sidebarPanel(
-        selectInput("es_dataset", "Dataset", choices = NULL),
-        selectInput("es_outcome", "Outcome", choices = NULL),
-        downloadButton("dl_es", "Download filtered event-study data (Excel)")
-      ),
-      mainPanel(
-        uiOutput("es_avg_effect"),
-        plotlyOutput("plot_es", height = "660px"),
-        DTOutput("tbl_es_summary"),
-        DTOutput("tbl_es")
-      )
-    )
-  ),
-  
-  tabPanel(
-    "Event study by group",
-    sidebarLayout(
-      sidebarPanel(
-        selectInput("esg_dataset", "Dataset", choices = NULL),
-        selectInput("esg_factor", "Grouping factor", choices = NULL),
-        selectInput("esg_outcome", "Outcome", choices = NULL),
-        selectizeInput("esg_groups", "Visible groups", choices = NULL, multiple = TRUE),
-        downloadButton("dl_esg", "Download filtered grouped event-study data (Excel)")
-      ),
-      mainPanel(
-        uiOutput("esg_avg_effect"),
-        plotlyOutput("plot_esg", height = "660px"),
-        DTOutput("tbl_esg_summary"),
-        DTOutput("tbl_esg")
-      )
-    )
+    "Iteration 3",
+    tags$div(class = "iteration-wrapper", iteration_3_app$ui)
   )
 )
 
 server <- function(input, output, session) {
-  error_log <- reactiveVal(character())
-  add_error <- function(msg) {
-    log_msg(msg)
-    error_log(c(error_log(), msg))
-  }
-  
-  shm_total_df <- reactive({
-    req(!is.na(shm_sheet_name))
-    get_sheet(shm_sheet_name)
-  })
-  
-  profile_df <- reactive({
-    req(!is.na(profile_sheet_name))
-    get_sheet(profile_sheet_name)
-  })
-  
-  observe({
-    prof <- profile_df()
-    if (nrow(prof) > 0) {
-      cats <- sort(unique(prof$category))
-      updateSelectInput(session, "profile_category", choices = cats, selected = cats[1])
-    }
-  })
-  
-  output$tbl_shm_total <- renderDT({
-    DT::datatable(shm_total_df(), options = list(pageLength = 10, scrollX = TRUE))
-  })
-  
-  output$plot_shm_total <- renderPlotly({
-    df <- shm_total_df()
-    req(nrow(df) > 0, "year" %in% names(df))
-    value_cols <- setdiff(names(df), "year")
-    df_long <- df |>
-      tidyr::pivot_longer(dplyr::all_of(value_cols), names_to = "series", values_to = "value_raw") |>
-      dplyr::mutate(
-        year = suppressWarnings(as.numeric(year)),
-        value = suppressWarnings(as.numeric(value_raw))
-      ) |>
-      dplyr::filter(!is.na(value), !is.na(year)) |>
-      dplyr::mutate(
-        tooltip = paste0(
-          "Series: ", series, "<br>",
-          "Year: ", year, "<br>",
-          "Value: ", scales::comma(value)
-        )
-      )
-    
-    req(nrow(df_long) > 0)
-    
-    p <- plotly::plot_ly()
-    for (s in unique(df_long$series)) {
-      trace_df <- df_long[df_long$series == s, , drop = FALSE]
-      p <- p |>
-        plotly::add_trace(
-          data = trace_df,
-          x = ~year,
-          y = ~value,
-          type = "scatter",
-          mode = "lines+markers",
-          name = s,
-          text = ~tooltip,
-          hoverinfo = "text"
-        )
-    }
-    
-    p |>
-      plotly::layout(
-        title = list(text = "Totals over time"),
-        xaxis = list(title = ""),
-        yaxis = list(title = "Count"),
-        legend = list(title = list(text = ""))
-      )
-  })
-  
-  filtered_profile <- reactive({
-    df <- profile_df()
-    req(nrow(df) > 0, input$profile_category)
-    df |>
-      dplyr::filter(category == input$profile_category) |>
-      dplyr::mutate(
-        has_hiv_label = prettify_hiv(has_hiv),
-        level = as.character(level)
-      )
-  })
-  
-  output$plot_profile <- renderPlotly({
-    df <- filtered_profile()
-    req(nrow(df) > 0)
-    
-    df_plot <- df |>
-      dplyr::filter(!is.na(share), share <= 1, !tolower(level) %in% c("all", "unknown"))
-    if (nrow(df_plot) == 0) {
-      df_plot <- df |>
-        dplyr::filter(!is.na(share), share <= 1)
-    }
-    metric_col <- "share"
-    metric_lab <- "Share"
-    df_plot <- df_plot |>
-      dplyr::mutate(
-        metric_value = share,
-        value_label = scales::percent(share, accuracy = 1)
-      )
-    
-    req(nrow(df_plot) > 0)
-    
-    level_order <- df_plot |>
-      dplyr::group_by(level) |>
-      dplyr::summarise(order_value = max(metric_value, na.rm = TRUE), .groups = "drop") |>
-      dplyr::arrange(order_value) |>
-      dplyr::pull(level)
-    
-    df_plot <- df_plot |>
-      dplyr::mutate(
-        level = factor(stringr::str_wrap(level, width = 28),
-                       levels = stringr::str_wrap(level_order, width = 28)),
-        tooltip = paste0(
-          "Level: ", gsub("\n", " ", as.character(level)), "<br>",
-          "Population: ", has_hiv_label, "<br>",
-          metric_lab, ": ", value_label
-        )
-      )
-    
-    p <- plotly::plot_ly()
-    for (grp in unique(df_plot$has_hiv_label)) {
-      trace_df <- df_plot[df_plot$has_hiv_label == grp, , drop = FALSE]
-      p <- p |>
-        plotly::add_trace(
-          data = trace_df,
-          x = ~metric_value,
-          y = ~level,
-          type = "bar",
-          orientation = "h",
-          name = grp,
-          text = ~value_label,
-          textposition = "auto",
-          customdata = ~tooltip,
-          hovertemplate = "%{customdata}<extra></extra>"
-        )
-    }
-    
-    p |>
-      plotly::layout(
-        barmode = "group",
-        title = list(text = paste("Profile:", prettify_factor(input$profile_category))),
-        xaxis = list(title = metric_lab, tickformat = if (metric_col == "share") ",.0%" else NULL),
-        yaxis = list(title = ""),
-        legend = list(orientation = "h", x = 0, y = -0.12)
-      )
-  })
-  
-  output$tbl_profile <- renderDT({
-    DT::datatable(filtered_profile(), options = list(pageLength = 15, scrollX = TRUE))
-  })
-  
-  observe({
-    ds_choices <- sort(unique(means_index$dataset_label))
-    if (length(ds_choices) > 0) {
-      selected <- isolate(input$mean_dataset)
-      if (is.null(selected) || !(selected %in% ds_choices)) selected <- ds_choices[1]
-      updateSelectInput(session, "mean_dataset", choices = ds_choices, selected = selected)
-    }
-  })
-  
-  mean_sheet_choice <- reactive({
-    req(input$mean_dataset, input$mean_time_scale)
-    
-    candidates <- means_index |>
-      dplyr::filter(
-        dataset_label == input$mean_dataset,
-        time_scale == input$mean_time_scale
-      )
-    
-    req(nrow(candidates) > 0)
-    candidates
-  })
-  
-  observe({
-    candidates <- mean_sheet_choice()
-    choices <- unique(candidates$group_label)
-    
-    choices <- c(
-      "No subgroup split",
-      sort(setdiff(choices, "No subgroup split"))
-    )
-    choices <- unique(choices[choices %in% candidates$group_label])
-    
-    selected <- isolate(input$mean_group_var)
-    if (is.null(selected) || !(selected %in% choices)) selected <- choices[1]
-    
-    updateSelectInput(session, "mean_group_var", choices = choices, selected = selected)
-  })
-  
-  mean_sheet_selected <- reactive({
-    candidates <- mean_sheet_choice()
-    req(input$mean_group_var)
-    
-    rows <- candidates |>
-      dplyr::filter(group_label == input$mean_group_var)
-    
-    if (nrow(rows) == 0) {
-      rows <- candidates
-    }
-    
-    if (identical(input$mean_time_scale, "Calendar year")) {
-      if (identical(input$mean_group_var, "No subgroup split")) {
-        preferred <- rows |>
-          dplyr::filter(stringr::str_detect(sheet, "_mean_yr_all$"))
-      } else {
-        preferred <- rows |>
-          dplyr::filter(stringr::str_detect(sheet, "_mean_yr_.*_all$"))
-      }
-      
-      if (nrow(preferred) > 0) {
-        rows <- preferred
-      }
-    }
-    
-    row <- rows |>
-      dplyr::arrange(sheet) |>
-      dplyr::slice(1)
-    
-    req(nrow(row) == 1)
-    row
-  })
-  
-  mean_data_raw <- reactive({
-    get_sheet(mean_sheet_selected()$sheet[[1]])
-  })
-  
-  observe({
-    df <- mean_data_raw()
-    req(nrow(df) > 0)
-    var_choices <- sort(unique(df$name))
-    type_choices <- sort(unique(df$type))
-    
-    selected_var <- isolate(input$mean_variable)
-    if (is.null(selected_var) || !(selected_var %in% var_choices)) selected_var <- var_choices[1]
-    
-    selected_type <- isolate(input$mean_type)
-    default_type <- dplyr::coalesce(type_choices[type_choices == "gemiddelde_per_persoon"][1], type_choices[1])
-    if (is.null(selected_type) || !(selected_type %in% type_choices)) selected_type <- default_type
-    
-    updateSelectInput(session, "mean_variable", choices = var_choices, selected = selected_var)
-    updateSelectInput(
-      session,
-      "mean_type",
-      choices = type_choices,
-      selected = selected_type
-    )
-  })
-
-  output$mean_inflation_ui <- renderUI({
-    req(input$mean_time_scale, input$mean_variable)
-
-    if (!identical(input$mean_time_scale, "Calendar year") || !isTRUE(is_cost_variable(input$mean_variable))) {
-      return(NULL)
-    }
-
-    checkboxInput(
-      "mean_adjust_inflation",
-      "Adjust costs to 2023 EUR using CPI",
-      value = FALSE
-    )
-  })
-  
-  output$mean_group_filter_ui <- renderUI({
-    df <- mean_data_raw()
-    req(nrow(df) > 0)
-    group_var <- mean_sheet_selected()$group_var[[1]]
-    if (group_var == "none" || !(group_var %in% names(df))) {
-      return(NULL)
-    }
-    choices <- sort(unique(as.character(df[[group_var]])))
-    selected <- isolate(input$mean_group_values)
-    if (is.null(selected) || length(selected) == 0) {
-      selected <- choices
-    } else {
-      selected <- intersect(selected, choices)
-      if (length(selected) == 0) selected <- choices
-    }
-    selectizeInput("mean_group_values", prettify_factor(group_var), choices = choices, selected = selected, multiple = TRUE)
-  })
-  
-  filtered_mean <- reactive({
-    df <- mean_data_raw()
-    req(nrow(df) > 0, input$mean_variable, input$mean_type)
-    
-    df <- df |>
-      dplyr::filter(name == input$mean_variable, type == input$mean_type) |>
-      dplyr::mutate(
-        has_hiv_label = prettify_hiv(has_hiv),
-        pretty_variable = prettify_label(name),
-        display_name = as.character(name)
-      )
-    
-    group_var <- mean_sheet_selected()$group_var[[1]]
-    x_var <- if ("years_since_diagnosis" %in% names(df)) "years_since_diagnosis" else "year"
-    
-    if (group_var != "none" && group_var %in% names(df)) {
-      selected_groups <- input$mean_group_values
-      if (!is.null(selected_groups) && length(selected_groups) > 0) {
-        df <- df |>
-          dplyr::filter(as.character(.data[[group_var]]) %in% selected_groups)
-      }
-      df <- df |>
-        dplyr::mutate(group_value = as.character(.data[[group_var]]))
-    } else {
-      df <- df |>
-        dplyr::mutate(group_value = "All")
-    }
-    
-    df <- df |>
-      dplyr::mutate(
-        x_value = suppressWarnings(as.numeric(.data[[x_var]]))
-      ) |>
-      dplyr::filter(!is.na(x_value), !is.na(value))
-
-    if (identical(x_var, "year")) {
-      df <- df |>
-        dplyr::left_join(cpi_index, by = "year")
-    } else {
-      df <- df |>
-        dplyr::mutate(cpi = NA_real_)
-    }
-
-    adjust_for_inflation <- identical(input$mean_time_scale, "Calendar year") &&
-      isTRUE(is_cost_variable(input$mean_variable)) &&
-      isTRUE(input$mean_adjust_inflation)
-
-    df <- df |>
-      dplyr::mutate(
-        value_nominal = value,
-        value_adjusted_2023 = dplyr::if_else(
-          !is.na(cpi) & cpi > 0,
-          value / cpi,
-          value
-        )
-      )
-
-    if (adjust_for_inflation) {
-      df <- df |>
-        dplyr::mutate(
-          value_plot = value_adjusted_2023,
-          value_tooltip = paste0(
-            "Value (2023 EUR): ", scales::comma(value_plot),
-            "<br>Nominal value: ", scales::comma(value_nominal)
-          )
-        )
-    } else {
-      df <- df |>
-        dplyr::mutate(
-          value_plot = value_nominal,
-          value_tooltip = paste0("Value: ", scales::comma(value_plot))
-        )
-    }
-
-    df
-  })
-  
-  output$plot_mean <- renderPlotly({
-    df <- filtered_mean()
-    req(nrow(df) > 0)
-    
-    x_var <- if ("years_since_diagnosis" %in% names(df)) "years_since_diagnosis" else "year"
-    group_var <- mean_sheet_selected()$group_var[[1]]
-    facet_formula <- if (group_var != "none") ~ group_value else NULL
-    adjust_for_inflation <- identical(input$mean_time_scale, "Calendar year") &&
-      isTRUE(is_cost_variable(input$mean_variable)) &&
-      isTRUE(input$mean_adjust_inflation)
-    palette_vals <- c(
-      "Matched controls / no HIV" = "gray50",
-      "People with HIV" = "steelblue4"
-    )
-    
-    p <- ggplot(
-      df,
-      aes(
-        x = x_value,
-        y = value_plot,
-        color = has_hiv_label,
-        group = has_hiv_label,
-        text = paste0(
-          "Outcome: ", pretty_variable, "<br>",
-          "Series: ", has_hiv_label, "<br>",
-          ifelse(x_var == "year", "Year: ", "Years since diagnosis: "), x_value, "<br>",
-          value_tooltip
-        )
-      )
-    ) +
-      geom_line(linewidth = 1, linetype = "solid") +
-      geom_point(size = 2) +
-      scale_color_manual(values = palette_vals, drop = FALSE) +
-      theme_minimal(base_size = 13) +
-      labs(
-        title = paste(
-          "Aggregated means:",
-          unique(df$pretty_variable),
-          if (adjust_for_inflation) "(2023 EUR)" else ""
-        ),
-        subtitle = paste(input$mean_dataset, "-", input$mean_group_var),
-        x = ifelse(x_var == "year", "Calendar year", "Years since diagnosis"),
-        y = if (adjust_for_inflation) "Value (2023 EUR)" else "Value",
-        color = NULL
-      )
-    
-    if (!is.null(facet_formula)) {
-      p <- p + facet_wrap(facet_formula, scales = "fixed", ncol = 1)
-    }
-    
-    if (x_var == "years_since_diagnosis") {
-      p <- p + geom_vline(xintercept = 0, linetype = "dashed", color = "red")
-    }
-    
-    plotly::ggplotly(p, tooltip = "text")
-  })
-  
-  output$tbl_mean <- renderDT({
-    DT::datatable(filtered_mean(), options = list(pageLength = 15, scrollX = TRUE))
-  })
-  
-  observe({
-    ds_choices <- sort(unique(es_index$dataset_label))
-    if (length(ds_choices) > 0) {
-      updateSelectInput(session, "es_dataset", choices = ds_choices, selected = ds_choices[1])
-    }
-  })
-  
-  es_sheet_selected <- reactive({
-    req(input$es_dataset)
-    row <- es_index |>
-      dplyr::filter(dataset_label == input$es_dataset) |>
-      dplyr::slice(1)
-    req(nrow(row) == 1)
-    row
-  })
-  
-  es_data_raw <- reactive({
-    get_sheet(es_sheet_selected()$sheet[[1]])
-  })
-  
-  observe({
-    df <- es_data_raw()
-    req(nrow(df) > 0)
-    outc <- sort(unique(df$outcome))
-    updateSelectInput(session, "es_outcome", choices = outc, selected = outc[1])
-  })
-  
-  filtered_es <- reactive({
-    es_data_raw() |>
-      dplyr::filter(outcome == input$es_outcome) |>
-      dplyr::mutate(
-        outcome_label = prettify_label(outcome),
-        avg_effect_label = dplyr::case_when(
-          !is.na(total_effect) ~ sprintf("%.3f", total_effect),
-          TRUE ~ "NA"
-        )
-      ) |>
-      dplyr::arrange(years_since_diagnosis)
-  })
-  
-  es_summary <- reactive({
-    df <- filtered_es()
-    req(nrow(df) > 0)
-    df |>
-      dplyr::summarise(
-        outcome = dplyr::first(outcome_label),
-        average_post_treatment_effect = dplyr::first(total_effect),
-        average_post_treatment_se = dplyr::first(total_se),
-        n = dplyr::first(n)
-      )
-  })
-  
-  output$es_avg_effect <- renderUI({
-    sm <- es_summary()
-    req(nrow(sm) > 0)
-    effect_txt <- ifelse(is.na(sm$average_post_treatment_effect[[1]]), "NA", sprintf("%.3f", sm$average_post_treatment_effect[[1]]))
-    se_txt <- ifelse(is.na(sm$average_post_treatment_se[[1]]), "NA", sprintf("%.3f", sm$average_post_treatment_se[[1]]))
-    HTML(sprintf("<div style='margin-bottom:10px;'><b>Average post-treatment effect:</b> %s &nbsp;&nbsp; <b>SE:</b> %s</div>", effect_txt, se_txt))
-  })
-  
-  output$plot_es <- renderPlotly({
-    df <- filtered_es()
-    sm <- es_summary()
-    req(nrow(df) > 0, nrow(sm) > 0)
-    
-    subtitle_txt <- sprintf(
-      "Average post-treatment effect: %s | SE: %s",
-      ifelse(is.na(sm$average_post_treatment_effect[[1]]), "NA", sprintf("%.3f", sm$average_post_treatment_effect[[1]])),
-      ifelse(is.na(sm$average_post_treatment_se[[1]]), "NA", sprintf("%.3f", sm$average_post_treatment_se[[1]]))
-    )
-    
-    p <- ggplot(
-      df,
-      aes(
-        x = years_since_diagnosis,
-        y = coef,
-        text = paste0(
-          "Year: ", years_since_diagnosis, "<br>",
-          "Estimate: ", round(coef, 3), "<br>",
-          "95% CI: [", round(lo, 3), ", ", round(hi, 3), "]<br>",
-          "Average post-treatment effect: ",
-          ifelse(is.na(total_effect), "NA", sprintf("%.3f", total_effect)),
-          "<br>Average post-treatment SE: ",
-          ifelse(is.na(total_se), "NA", sprintf("%.3f", total_se))
-        )
-      )
-    ) +
-      geom_errorbar(aes(ymin = lo, ymax = hi), width = 0.1, color = "steelblue4") +
-      geom_line(linewidth = 1, linetype = "dashed", color = "steelblue4") +
-      geom_point(size = 2, color = "steelblue4") +
-      geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
-      geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
-      scale_x_continuous(breaks = sort(unique(df$years_since_diagnosis))) +
-      theme_minimal(base_size = 13) +
-      labs(
-        title = paste("Event study:", unique(df$outcome_label)),
-        subtitle = subtitle_txt,
-        x = "Years since diagnosis",
-        y = "Change relative to pre-diagnosis"
-      )
-    
-    plotly::ggplotly(p, tooltip = "text")
-  })
-  
-  output$tbl_es_summary <- renderDT({
-    sm <- es_summary() |>
-      dplyr::mutate(
-        dplyr::across(c(average_post_treatment_effect, average_post_treatment_se), ~ round(.x, 3))
-      )
-    DT::datatable(sm, options = list(dom = 't', scrollX = TRUE), rownames = FALSE)
-  })
-  
-  output$tbl_es <- renderDT({
-    DT::datatable(filtered_es(), options = list(pageLength = 15, scrollX = TRUE))
-  })
-  
-  observe({
-    ds_choices <- sort(unique(es_group_index$dataset_label))
-    if (length(ds_choices) > 0) {
-      updateSelectInput(session, "esg_dataset", choices = ds_choices, selected = ds_choices[1])
-    }
-  })
-  
-  esg_data_raw <- reactive({
-    req(input$esg_dataset)
-    sheet <- es_group_index |>
-      dplyr::filter(dataset_label == input$esg_dataset) |>
-      dplyr::slice(1) |>
-      dplyr::pull(sheet)
-    req(length(sheet) == 1)
-    get_sheet(sheet)
-  })
-  
-  observe({
-    df <- esg_data_raw()
-    req(nrow(df) > 0)
-    
-    facs <- sort(unique(df$factor))
-    selected <- isolate(input$esg_factor)
-    if (is.null(selected) || !(selected %in% facs)) selected <- facs[1]
-    
-    updateSelectInput(
-      session,
-      "esg_factor",
-      choices = stats::setNames(facs, prettify_factor(facs)),
-      selected = selected
-    )
-  })
-  
-  observe({
-    df <- esg_data_raw()
-    req(nrow(df) > 0, input$esg_factor)
-    outc <- df |>
-      dplyr::filter(factor == input$esg_factor) |>
-      dplyr::pull(outcome) |>
-      unique() |>
-      sort()
-    updateSelectInput(session, "esg_outcome", choices = outc, selected = outc[1])
-  })
-  
-  observe({
-    df <- esg_data_raw()
-    req(nrow(df) > 0, input$esg_factor, input$esg_outcome)
-    groups <- df |>
-      dplyr::filter(factor == input$esg_factor, outcome == input$esg_outcome) |>
-      dplyr::pull(group) |>
-      unique() |>
-      sort()
-    updateSelectizeInput(session, "esg_groups", choices = groups, selected = groups, server = TRUE)
-  })
-  
-  filtered_esg <- reactive({
-    df <- esg_data_raw()
-    req(nrow(df) > 0, input$esg_factor, input$esg_outcome)
-    df <- df |>
-      dplyr::filter(factor == input$esg_factor, outcome == input$esg_outcome)
-    if (!is.null(input$esg_groups) && length(input$esg_groups) > 0) {
-      df <- df |>
-        dplyr::filter(group %in% input$esg_groups)
-    }
-    df |>
-      dplyr::arrange(group, years_since_diagnosis) |>
-      dplyr::mutate(
-        factor_label = prettify_factor(factor),
-        outcome_label = prettify_label(outcome)
-      )
-  })
-  
-  esg_summary <- reactive({
-    df <- filtered_esg()
-    req(nrow(df) > 0)
-    df |>
-      dplyr::group_by(group) |>
-      dplyr::summarise(
-        average_post_treatment_effect = dplyr::first(total_effect),
-        average_post_treatment_se = dplyr::first(total_se),
-        n = dplyr::first(n),
-        .groups = "drop"
-      ) |>
-      dplyr::arrange(group)
-  })
-  
-  output$esg_avg_effect <- renderUI({
-    sm <- esg_summary()
-    req(nrow(sm) > 0)
-    summary_txt <- paste(
-      paste0(
-        sm$group, ": ",
-        ifelse(is.na(sm$average_post_treatment_effect), "NA", sprintf("%.3f", sm$average_post_treatment_effect)),
-        " (SE ",
-        ifelse(is.na(sm$average_post_treatment_se), "NA", sprintf("%.3f", sm$average_post_treatment_se)),
-        ")"
-      ),
-      collapse = " | "
-    )
-    HTML(sprintf("<div style='margin-bottom:10px;'><b>Average post-treatment effect by group:</b> %s</div>", summary_txt))
-  })
-  
-  output$plot_esg <- renderPlotly({
-    df <- filtered_esg()
-    sm <- esg_summary()
-    req(nrow(df) > 0, nrow(sm) > 0)
-    
-    subtitle_txt <- paste0(
-      unique(df$factor_label),
-      " | Avg post-treatment effect: ",
-      paste(
-        paste0(
-          sm$group, "=",
-          ifelse(is.na(sm$average_post_treatment_effect), "NA", sprintf("%.3f", sm$average_post_treatment_effect)),
-          " (SE ",
-          ifelse(is.na(sm$average_post_treatment_se), "NA", sprintf("%.3f", sm$average_post_treatment_se)),
-          ")"
-        ),
-        collapse = "; "
-      )
-    )
-    
-    p <- ggplot(
-      df,
-      aes(
-        x = years_since_diagnosis,
-        y = coef,
-        color = group,
-        group = group,
-        text = paste0(
-          "Group: ", group, "<br>",
-          "Year: ", years_since_diagnosis, "<br>",
-          "Estimate: ", round(coef, 3), "<br>",
-          "95% CI: [", round(lo, 3), ", ", round(hi, 3), "]<br>",
-          "Average post-treatment effect: ",
-          ifelse(is.na(total_effect), "NA", sprintf("%.3f", total_effect)),
-          "<br>Average post-treatment SE: ",
-          ifelse(is.na(total_se), "NA", sprintf("%.3f", total_se))
-        )
-      )
-    ) +
-      geom_errorbar(aes(ymin = lo, ymax = hi), width = 0.1) +
-      geom_line(linewidth = 1, linetype = "dashed") +
-      geom_point(size = 2) +
-      geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
-      geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
-      scale_x_continuous(breaks = sort(unique(df$years_since_diagnosis))) +
-      theme_minimal(base_size = 13) +
-      labs(
-        title = paste("Event study by group:", unique(df$outcome_label)),
-        subtitle = subtitle_txt,
-        x = "Years since diagnosis",
-        y = "Change relative to pre-diagnosis",
-        color = NULL
-      )
-    
-    plotly::ggplotly(p, tooltip = "text")
-  })
-  
-  output$tbl_esg_summary <- renderDT({
-    sm <- esg_summary() |>
-      dplyr::mutate(
-        dplyr::across(c(average_post_treatment_effect, average_post_treatment_se), ~ round(.x, 3))
-      )
-    DT::datatable(sm, options = list(dom = 't', scrollX = TRUE), rownames = FALSE)
-  })
-  
-  output$tbl_esg <- renderDT({
-    DT::datatable(filtered_esg(), options = list(pageLength = 15, scrollX = TRUE))
-  })
-  
-  output$dl_profile <- downloadHandler(
-    filename = function() paste0("profile_", input$profile_category, "_", Sys.Date(), ".xlsx"),
-    content = function(file) writexl::write_xlsx(filtered_profile(), path = file)
-  )
-  
-  output$dl_mean <- downloadHandler(
-    filename = function() paste0("aggregated_means_", Sys.Date(), ".xlsx"),
-    content = function(file) writexl::write_xlsx(filtered_mean(), path = file)
-  )
-  
-  output$dl_es <- downloadHandler(
-    filename = function() paste0("event_study_", Sys.Date(), ".xlsx"),
-    content = function(file) writexl::write_xlsx(filtered_es(), path = file)
-  )
-  
-  output$dl_esg <- downloadHandler(
-    filename = function() paste0("event_study_by_group_", Sys.Date(), ".xlsx"),
-    content = function(file) writexl::write_xlsx(filtered_esg(), path = file)
-  )
+  iteration_2_app$server(input, output, session)
+  iteration_3_app$server(input, output, session)
 }
 
-options(shiny.error = function() {
-  err <- geterrmessage()
-  message(sprintf("[shiny.error] %s", err))
-  writeLines(sprintf("[shiny.error] %s", err), con = "shiny_error.log")
-})
-
-if (exists("secure_app", mode = "function") && exists("secure_server", mode = "function")) {
-  shinyApp(ui = secure_app(ui), server = server)
-} else {
-  shinyApp(ui, server)
-}
+shinyApp(ui, server)
