@@ -1,0 +1,6 @@
+[2026-07-10 15:05:45.452808] [cache] Loaded event_study / zorgkosten_es (888 rows) 
+[2026-07-10 15:05:45.499145] [cache] Loaded event_study / zorgkosten_es_group (8140 rows) 
+[2026-07-10 15:05:45.584909] [cache] Loaded descriptives / zorgkosten_mean_yr (1200 rows) 
+[2026-07-10 15:05:45.610322] [cache] Loaded event_study / zorgkosten_mean (2700 rows) 
+[2026-07-10 15:05:47.687169] [cache] Loaded counts / prevalence (41 rows) 
+[2026-07-10 15:05:47.789749] [cache] Loaded counts / infectious_status (132 rows) 
